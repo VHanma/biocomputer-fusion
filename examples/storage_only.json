@@ -1,0 +1,14 @@
+{
+  "name": "storage-only",
+  "write": [
+    {
+      "address": "slot:data",
+      "text": "A compact DNA-like memory demo."
+    }
+  ],
+  "logic": [],
+  "signals": [],
+  "wave": {
+    "enabled": false
+  }
+}

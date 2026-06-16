@@ -1,0 +1,66 @@
+{
+  "name": "hello-fusion",
+  "write": [
+    {
+      "address": "slot:message",
+      "text": "HELLO BIOCOMPUTER"
+    },
+    {
+      "address": "slot:marker",
+      "sequence": "ACGTACGTACGT"
+    }
+  ],
+  "logic": [
+    {
+      "gate": "AND",
+      "inputs": [
+        true,
+        true
+      ],
+      "label": "viability"
+    },
+    {
+      "gate": "XOR",
+      "inputs": [
+        true,
+        false
+      ],
+      "label": "toggle"
+    },
+    {
+      "gate": "NAND",
+      "inputs": [
+        true,
+        true
+      ],
+      "label": "inhibition"
+    }
+  ],
+  "signals": [
+    {
+      "name": "pulse",
+      "payload": "sync",
+      "ttl": 3
+    },
+    {
+      "name": "readout",
+      "payload": "nano-scan",
+      "ttl": 2
+    }
+  ],
+  "wave": {
+    "enabled": true,
+    "carrier": "symbolic-resonance",
+    "frequency": 7.83,
+    "amplitude": 0.2,
+    "phase": 0.0
+  },
+  "evolution": {
+    "enabled": true,
+    "population_size": 32,
+    "program_length": 2,
+    "mutation_rate": 0.2,
+    "generations": 30,
+    "seed": 7
+  }
+}

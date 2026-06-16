@@ -1,0 +1,33 @@
+{
+  "name": "wave-field-symbolic-demo",
+  "write": [
+    {
+      "address": "slot:sequence",
+      "sequence": "ACGTACGTAAAACCCCGGGGTTTT"
+    }
+  ],
+  "logic": [
+    {
+      "gate": "OR",
+      "inputs": [
+        false,
+        true
+      ],
+      "label": "field_gate"
+    }
+  ],
+  "signals": [
+    {
+      "name": "symbolic_wave",
+      "payload": "interpretive overlay",
+      "ttl": 4
+    }
+  ],
+  "wave": {
+    "enabled": true,
+    "carrier": "symbolic-holographic-overlay",
+    "frequency": 3.14,
+    "amplitude": 0.05,
+    "phase": 1.0
+  }
+}
