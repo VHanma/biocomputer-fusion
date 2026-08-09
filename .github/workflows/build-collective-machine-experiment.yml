@@ -1,0 +1,54 @@
+name: Build Collective Machine Experiment APK
+
+on:
+  push:
+    branches:
+      - collective-machine-experiment
+    paths:
+      - 'collective-machine-experiment/**'
+      - '.github/workflows/build-collective-machine-experiment.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build debug APK
+        run: gradle -p collective-machine-experiment :app:assembleDebug --stacktrace
+      - name: Rename APK
+        run: cp collective-machine-experiment/app/build/outputs/apk/debug/app-debug.apk CollectiveMachineExperiment.apk
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CollectiveMachineExperiment-APK
+          path: CollectiveMachineExperiment.apk
+      - name: Publish stable release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view collective-machine-experiment-latest >/dev/null 2>&1; then
+            gh release upload collective-machine-experiment-latest CollectiveMachineExperiment.apk --clobber
+          else
+            gh release create collective-machine-experiment-latest CollectiveMachineExperiment.apk \
+              --title "Collective Machine Experiment - Latest" \
+              --notes "Experimental local collective voice-feature model. Raw audio is discarded after feature extraction. No network permission." \
+              --target "${GITHUB_SHA}"
+          fi
