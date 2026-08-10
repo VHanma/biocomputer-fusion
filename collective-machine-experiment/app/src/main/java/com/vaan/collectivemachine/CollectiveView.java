@@ -9,15 +9,13 @@ import android.graphics.Typeface;
 import android.view.View;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 public final class CollectiveView extends View {
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private List<Sample> samples = new ArrayList<>();
-    private ModelEngine.Prototype prototype;
+    private List<Sample> roundSamples = new ArrayList<>();
+    private CollectiveEngine.State state;
     private final long start = System.currentTimeMillis();
 
     public CollectiveView(Context context) {
@@ -26,9 +24,9 @@ public final class CollectiveView extends View {
         text.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
     }
 
-    public void setData(List<Sample> samples, ModelEngine.Prototype prototype) {
-        this.samples = new ArrayList<>(samples);
-        this.prototype = prototype;
+    public void setData(List<Sample> all, CollectiveEngine.State state) {
+        this.state = state;
+        this.roundSamples = state == null ? new ArrayList<>() : CollectiveEngine.filter(all, state.session, state.round);
         invalidate();
     }
 
@@ -39,35 +37,47 @@ public final class CollectiveView extends View {
         float min = Math.min(w, h);
         double phase = (System.currentTimeMillis() - start) / 900.0;
         p.setStyle(Paint.Style.FILL); p.setColor(Color.rgb(4, 6, 18)); c.drawRect(0, 0, w, h, p);
-        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.2f);
+
+        double coherence = state == null ? 0 : state.coherence;
+        double entropy = state == null ? 0 : state.entropy;
+        double novelty = state == null ? 0 : state.novelty;
         for (int r = 1; r <= 5; r++) {
-            p.setColor(Color.argb(42, 88, 118, 255));
-            c.drawCircle(cx, cy, min * (0.08f + r * 0.065f), p);
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.1f);
+            int alpha = 28 + (int)(45 * coherence);
+            p.setColor(Color.argb(alpha, 88, 118, 255));
+            c.drawCircle(cx, cy, min * (0.07f + r * 0.065f), p);
         }
-        int shown = Math.min(220, samples.size());
+
+        int shown = Math.min(220, roundSamples.size());
         for (int i = 0; i < shown; i++) {
-            Sample s = samples.get(samples.size() - 1 - i);
-            int hash = s.id.hashCode();
-            double a = ((hash & 0xffff) / 65535.0) * Math.PI * 2.0 + phase * 0.02;
-            float rr = min * (0.26f + 0.19f * (((hash >>> 16) & 255) / 255f));
+            Sample s = roundSamples.get(i);
+            int hash = (s.participant + s.modality + s.id).hashCode();
+            double a = ((hash & 0xffff) / 65535.0) * Math.PI * 2.0 + phase * 0.015;
+            float influence = state == null ? 0.2f : (float) state.influence.getOrDefault(s.participant, 0.2);
+            float rr = min * (0.28f + 0.16f * (((hash >>> 16) & 255) / 255f));
             float x = cx + (float) Math.cos(a) * rr;
             float y = cy + (float) Math.sin(a) * rr;
-            float bend = min * 0.055f;
+            float bend = min * (0.035f + 0.045f * influence);
             float mx = (cx + x) / 2f + (float) Math.cos(a + Math.PI / 2) * bend;
             float my = (cy + y) / 2f + (float) Math.sin(a + Math.PI / 2) * bend;
             Path path = new Path(); path.moveTo(x, y); path.quadTo(mx, my, cx, cy);
-            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.2f);
-            p.setColor(Color.argb(36 + (i % 80), 100, 118, 255)); c.drawPath(path, p);
-            p.setStyle(Paint.Style.FILL); p.setColor(Color.argb(180, 95, 112, 245)); c.drawCircle(x, y, 2.3f + (i % 3), p);
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1f + 2.3f * influence);
+            int alpha = 50 + (int)(130 * coherence);
+            p.setColor(Color.argb(alpha, 105, 127, 255)); c.drawPath(path, p);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(modalityColor(s.modality));
+            c.drawCircle(x, y, 3f + 5f * influence, p);
         }
-        int labels = prototype == null ? 0 : prototype.centroids.size();
-        int lobes = Math.max(3, Math.min(12, labels == 0 ? 5 : labels));
-        float base = min * (0.055f + 0.008f * Math.min(8, labels));
-        base *= 1.0f + 0.055f * (float) Math.sin(phase);
+
+        double[] coreVec = state == null ? new double[SignalEngine.FEATURES] : state.core;
+        int lobes = 5 + (int)Math.round(7 * novelty);
+        float base = min * (0.060f + 0.038f * (float)coherence);
         Path core = new Path();
-        for (int i = 0; i <= 180; i++) {
-            double a = i / 180.0 * Math.PI * 2;
-            double wobble = 1.0 + 0.20 * Math.sin(lobes * a + phase) + 0.07 * Math.sin((lobes + 3) * a - phase * 0.6);
+        for (int i = 0; i <= 220; i++) {
+            double a = i / 220.0 * Math.PI * 2;
+            double datum = coreVec[(i * 7) % coreVec.length];
+            double wobble = 1.0 + (0.08 + 0.20 * entropy) * Math.sin(lobes * a + phase + datum * 0.2)
+                    + 0.06 * Math.sin((lobes + 3) * a - phase * 0.6);
             float r = (float) (base * wobble);
             float x = cx + (float) Math.cos(a) * r;
             float y = cy + (float) Math.sin(a) * r;
@@ -75,17 +85,33 @@ public final class CollectiveView extends View {
         }
         core.close();
         p.setStyle(Paint.Style.FILL); p.setColor(Color.argb(205, 38, 235, 148)); c.drawPath(core, p);
-        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3f); p.setColor(Color.argb(220, 100, 255, 190)); c.drawPath(core, p);
+        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3f); p.setColor(Color.argb(230, 110, 255, 195)); c.drawPath(core, p);
+
         text.setTextSize(25f); text.setColor(Color.rgb(232, 219, 101)); c.drawText("INNER VIEW", 24, 38, text);
-        text.setTextSize(14f); text.setColor(Color.rgb(170, 192, 255));
-        c.drawText("signals " + samples.size() + "   people " + countParticipants() + "   prototypes " + labels, 24, 62, text);
-        c.drawText("20ms Hamming / 5ms hop / Bark features", 24, h - 24, text);
+        text.setTextSize(13f); text.setColor(Color.rgb(170, 192, 255));
+        if (state == null) {
+            c.drawText("No collective state yet", 24, 62, text);
+        } else {
+            c.drawText("session " + state.session + "   round " + state.round + "   people " + state.participants, 24, 62, text);
+            c.drawText("coherence " + pct(state.coherence) + "   entropy " + pct(state.entropy), 24, 82, text);
+            c.drawText("novelty " + pct(state.novelty) + "   stability " + pct(state.stability), 24, 102, text);
+        }
+        c.drawText("node color = modality   node size = influence", 24, h - 24, text);
         postInvalidateDelayed(33);
     }
 
-    private int countParticipants() {
-        Set<String> s = new HashSet<>();
-        for (Sample x : samples) s.add(x.participant);
-        return s.size();
+    private int modalityColor(String m) {
+        if ("voice".equals(m)) return Color.rgb(102, 132, 255);
+        if ("tap".equals(m)) return Color.rgb(255, 205, 100);
+        if ("reaction".equals(m)) return Color.rgb(255, 125, 125);
+        if ("text".equals(m)) return Color.rgb(188, 126, 255);
+        if ("motion".equals(m)) return Color.rgb(86, 230, 223);
+        if ("drawing".equals(m)) return Color.rgb(93, 241, 181);
+        if ("feedback".equals(m)) return Color.rgb(255, 150, 220);
+        return Color.LTGRAY;
+    }
+
+    private String pct(double x) {
+        return String.format(java.util.Locale.US, "%.0f%%", Math.max(0, Math.min(1, x)) * 100.0);
     }
 }
