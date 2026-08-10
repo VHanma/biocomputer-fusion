@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Set;
 
 public final class Store {
-    private static final String PREF = "collective_machine_store";
+    private static final String PREF = "collective_machine_store_v2";
     private static final String KEY = "samples_json";
     private final SharedPreferences prefs;
 
@@ -41,15 +41,20 @@ public final class Store {
 
     public String exportPayload(List<Sample> samples) throws JSONException {
         JSONObject root = new JSONObject();
-        root.put("format", "CollectiveMachineCapsule-1");
+        root.put("format", "CollectiveMachineCapsule-2");
         root.put("createdAt", System.currentTimeMillis());
         JSONObject protocol = new JSONObject();
+        protocol.put("featureDimensions", SignalEngine.FEATURES);
+        protocol.put("modalities", "voice,tap,reaction,text,motion,drawing,feedback");
         protocol.put("sampleRateHz", AudioEngine.SAMPLE_RATE);
         protocol.put("frameMs", 20);
         protocol.put("hopMs", 5);
         protocol.put("window", "Hamming");
         protocol.put("barkBands", AudioEngine.BARK_BANDS);
+        protocol.put("personalBaselines", true);
+        protocol.put("synchronizedRounds", true);
         protocol.put("rawAudioStored", false);
+        protocol.put("networkUpload", false);
         root.put("protocol", protocol);
         JSONArray a = new JSONArray();
         for (Sample s : samples) a.put(s.toJson());
@@ -59,7 +64,8 @@ public final class Store {
 
     public int importPayload(String raw, List<Sample> target) throws JSONException {
         JSONObject root = new JSONObject(raw);
-        if (!"CollectiveMachineCapsule-1".equals(root.optString("format"))) {
+        String format = root.optString("format");
+        if (!"CollectiveMachineCapsule-2".equals(format) && !"CollectiveMachineCapsule-1".equals(format)) {
             throw new JSONException("Unsupported capsule format");
         }
         Set<String> ids = new HashSet<>();
