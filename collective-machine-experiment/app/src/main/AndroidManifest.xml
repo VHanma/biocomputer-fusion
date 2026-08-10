@@ -4,11 +4,11 @@
 
     <application
         android:allowBackup="true"
-        android:label="Collective Machine Experiment"
+        android:label="Lain"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
-            android:name=".MainActivity"
+            android:name=".LainActivity"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>
@@ -16,5 +16,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
     </application>
 </manifest>
