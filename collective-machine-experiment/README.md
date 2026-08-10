@@ -1,18 +1,34 @@
-# Collective Machine Experiment
+# Collective Machine Experiment V2
 
-Android APK experiment inspired by the signal-to-model workflow discussed in the KIDS System sequence.
+Android experiment for building an evolving collective model from repeated human signals.
 
-## What it does
+## Input channels
 
-- Collects labeled 3-second voice samples from multiple participants.
-- Includes a 64-name prompt bank and random 5-name rounds.
-- Processes audio locally at 16 kHz.
-- Uses 20 ms frames, 5 ms hops, a Hamming window, FFT power, and 24 Bark-scale bands.
-- Discards raw audio after extracting a 50-value feature vector.
-- Builds transparent nearest-prototype acoustic models.
-- Runs 1/3 held-out testing and 2/3 training.
-- Tests an original model on later unseen data without retraining.
-- Runs a 4-stage incremental-retraining experiment.
-- Shows a live `INNER VIEW` network where human signals converge on the current prototype core.
-- Exports/imports feature-only JSON capsules so datasets from several phones can be merged.
-- Uses no network permission and makes no scientific or paranormal claims.
+- Voice: 16 kHz mono PCM, 20 ms Hamming frames, 5 ms hop, 512-point FFT, 24 Bark bands
+- Tap rhythm
+- Reaction timing
+- Typed response patterns
+- Accelerometer motion
+- Drawing paths
+- Recursive feedback responses
+
+All channels are compressed to 50-value local feature vectors.
+
+## Collective architecture
+
+1. Give participants the same session code and round number.
+2. Gather one or more modalities from each person.
+3. Earlier person + modality observations become personal baselines.
+4. The current round is expressed as change relative to those baselines.
+5. Participant residual vectors combine into a collective latent core.
+6. Measure coherence, dispersion, novelty, stability, and participant influence.
+7. Compare synchronized rounds with shuffled controls.
+8. Compare pooled collective prediction with participant-only prediction.
+9. Convert the current core into a generated visual glyph and short tone pattern.
+10. Record participant responses, advance the round, and repeat the loop.
+
+## Capsules
+
+V2 capsules preserve participant, modality, session, round, tag, timestamp, and feature vectors. V1 capsules can also be imported.
+
+Raw microphone audio is discarded after feature extraction. The app has no Internet permission.
