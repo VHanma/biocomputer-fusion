@@ -1,9 +1,9 @@
-name: Build Collective Machine Experiment APK
+name: Build Lain APK
 
 on:
   push:
     branches:
-      - collective-machine-experiment
+      - lain
     paths:
       - 'collective-machine-experiment/**'
       - '.github/workflows/build-collective-machine-experiment.yml'
@@ -34,21 +34,21 @@ jobs:
       - name: Build debug APK
         run: gradle -p collective-machine-experiment :app:assembleDebug --stacktrace
       - name: Rename APK
-        run: cp collective-machine-experiment/app/build/outputs/apk/debug/app-debug.apk CollectiveMachineExperiment.apk
+        run: cp collective-machine-experiment/app/build/outputs/apk/debug/app-debug.apk Lain.apk
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CollectiveMachineExperiment-APK
-          path: CollectiveMachineExperiment.apk
+          name: Lain-APK
+          path: Lain.apk
       - name: Publish stable release asset
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view collective-machine-experiment-latest >/dev/null 2>&1; then
-            gh release upload collective-machine-experiment-latest CollectiveMachineExperiment.apk --clobber
+          if gh release view lain-latest >/dev/null 2>&1; then
+            gh release upload lain-latest Lain.apk --clobber
           else
-            gh release create collective-machine-experiment-latest CollectiveMachineExperiment.apk \
-              --title "Collective Machine Experiment - Latest" \
-              --notes "Experimental local collective voice-feature model. Raw audio is discarded after feature extraction. No network permission." \
+            gh release create lain-latest Lain.apk \
+              --title "Lain - Latest" \
+              --notes "Local persistent collective-machine agent with dialogue memory, recursive feedback rounds, collective-state metrics, inner-view visualization, voice/text signal capture, and capsule merging." \
               --target "${GITHUB_SHA}"
           fi
