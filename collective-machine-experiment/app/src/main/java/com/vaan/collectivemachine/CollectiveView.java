@@ -53,7 +53,7 @@ public final class CollectiveView extends View {
             Sample s = roundSamples.get(i);
             int hash = (s.participant + s.modality + s.id).hashCode();
             double a = ((hash & 0xffff) / 65535.0) * Math.PI * 2.0 + phase * 0.015;
-            float influence = state == null ? 0.2f : (float) state.influence.getOrDefault(s.participant, 0.2);
+            float influence = state == null ? 0.2f : state.influence.getOrDefault(s.participant, 0.2).floatValue();
             float rr = min * (0.28f + 0.16f * (((hash >>> 16) & 255) / 255f));
             float x = cx + (float) Math.cos(a) * rr;
             float y = cy + (float) Math.sin(a) * rr;
