@@ -12,17 +12,37 @@ public final class Sample {
     public final String label;
     public final long timestamp;
     public final double[] features;
+    public final String modality;
+    public final String session;
+    public final int round;
+    public final String tag;
 
     public Sample(String participant, String label, long timestamp, double[] features) {
-        this(UUID.randomUUID().toString(), participant, label, timestamp, features);
+        this(UUID.randomUUID().toString(), participant, label, timestamp, features,
+                "voice", "default", 0, "");
+    }
+
+    public Sample(String participant, String label, long timestamp, double[] features,
+                  String modality, String session, int round, String tag) {
+        this(UUID.randomUUID().toString(), participant, label, timestamp, features,
+                modality, session, round, tag);
     }
 
     public Sample(String id, String participant, String label, long timestamp, double[] features) {
+        this(id, participant, label, timestamp, features, "voice", "legacy", 0, "");
+    }
+
+    public Sample(String id, String participant, String label, long timestamp, double[] features,
+                  String modality, String session, int round, String tag) {
         this.id = id;
-        this.participant = participant;
-        this.label = label;
+        this.participant = participant == null ? "Unknown" : participant;
+        this.label = label == null ? "Unlabeled" : label;
         this.timestamp = timestamp;
-        this.features = features;
+        this.features = features == null ? new double[SignalEngine.FEATURES] : SignalEngine.fit(features);
+        this.modality = modality == null || modality.trim().isEmpty() ? "unknown" : modality;
+        this.session = session == null || session.trim().isEmpty() ? "default" : session;
+        this.round = Math.max(0, round);
+        this.tag = tag == null ? "" : tag;
     }
 
     public JSONObject toJson() throws JSONException {
@@ -31,6 +51,10 @@ public final class Sample {
         o.put("participant", participant);
         o.put("label", label);
         o.put("timestamp", timestamp);
+        o.put("modality", modality);
+        o.put("session", session);
+        o.put("round", round);
+        o.put("tag", tag);
         JSONArray f = new JSONArray();
         for (double v : features) f.put(v);
         o.put("features", f);
@@ -46,7 +70,11 @@ public final class Sample {
                 o.optString("participant", "Unknown"),
                 o.optString("label", "Unlabeled"),
                 o.optLong("timestamp", System.currentTimeMillis()),
-                features
+                features,
+                o.optString("modality", "voice"),
+                o.optString("session", o.has("modality") ? "default" : "legacy"),
+                o.optInt("round", 0),
+                o.optString("tag", "")
         );
     }
 }
