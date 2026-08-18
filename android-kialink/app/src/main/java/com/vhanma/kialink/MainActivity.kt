@@ -33,8 +33,6 @@ class MainActivity : Activity() {
     private lateinit var resultText: TextView
     private lateinit var chargeButton: Button
 
-    private var selfUri: Uri? = null
-    private var targetUri: Uri? = null
     private var selfHash: ByteArray? = null
     private var targetHash: ByteArray? = null
     private var currentSeal: ByteArray? = null
@@ -147,7 +145,7 @@ class MainActivity : Activity() {
         root.addView(utilities)
 
         root.addView(text(
-            "The app's literal link is deterministic cryptographic pair-binding: the two image hashes + your intent always generate the same seal. “Quantum entanglement” is used only as an optional ritual metaphor; literal quantum entanglement between people or photographs is not established by current physics.",
+            "The app's literal link is deterministic cryptographic pair-binding: the two image hashes + your intent always generate the same seal. “Quantum entanglement” is an optional ritual metaphor; literal quantum entanglement between people or photographs is not established by current physics.",
             12f, Color.rgb(150, 137, 168), false
         ).apply { setPadding(dp(2), dp(14), dp(2), 0) })
 
@@ -160,6 +158,7 @@ class MainActivity : Activity() {
             type = "image/*"
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
+        @Suppress("DEPRECATION")
         startActivityForResult(intent, requestCode)
     }
 
@@ -176,12 +175,10 @@ class MainActivity : Activity() {
         val digest = hashUri(uri)
         when (requestCode) {
             REQ_SELF -> {
-                selfUri = uri
                 selfHash = digest
                 linkView.selfBitmap = bitmap
             }
             REQ_TARGET -> {
-                targetUri = uri
                 targetHash = digest
                 linkView.targetBitmap = bitmap
             }
@@ -283,7 +280,7 @@ class MainActivity : Activity() {
         box.addView(instruction)
         box.addView(progress)
 
-        val dialog = AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK_ALERT)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Charge protocol")
             .setView(box)
             .setNegativeButton("STOP", null)
@@ -342,7 +339,7 @@ class MainActivity : Activity() {
             minLines = 3
             setPadding(dp(14), dp(12), dp(14), dp(12))
         }
-        AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK_ALERT)
+        AlertDialog.Builder(this)
             .setTitle("Integration lock")
             .setMessage("Turn the ritual into a real-world trigger. One specific if-then action makes the selected identity easier to enact repeatedly.")
             .setView(input)
@@ -375,7 +372,7 @@ class MainActivity : Activity() {
             val p = line.split('|')
             if (p.size >= 5) "${p[0]}  •  ${p[1]}\nTraits: ${p[2]}\nSeal: ${p[3]}\nIntegration: ${p[4]}" else line
         }
-        AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK_ALERT)
+        AlertDialog.Builder(this)
             .setTitle("Magical journal")
             .setMessage(display)
             .setPositiveButton("CLOSE", null)
@@ -400,7 +397,7 @@ class MainActivity : Activity() {
 
             Sources behind the design: Austin Osman Spare; Peter J. Carroll, Liber Null & Psychonaut and Liber Kaos; Phil Hine, Condensed Chaos; Grant Morrison, Pop Magic; J. G. Frazer on sympathetic magic; Gollwitzer's implementation-intention research; modern sport-imagery reviews.
         """.trimIndent()
-        AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK_ALERT)
+        AlertDialog.Builder(this)
             .setTitle("Why this method")
             .setMessage(message)
             .setPositiveButton("CLOSE", null)
@@ -492,7 +489,6 @@ class LinkCanvas(context: android.content.Context) : View(context) {
     private var phase = 0f
     private var animator: ValueAnimator? = null
 
-    private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
     private val violet = Color.rgb(185, 108, 255)
     private val cyan = Color.rgb(101, 231, 255)
 
@@ -522,8 +518,7 @@ class LinkCanvas(context: android.content.Context) : View(context) {
         }
 
         val cx = w / 2f
-        val sy = cy
-        drawSigil(canvas, cx, sy, r * .62f)
+        drawSigil(canvas, cx, cy, r * .62f)
 
         val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(177, 163, 196)
