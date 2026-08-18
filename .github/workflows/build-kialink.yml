@@ -6,6 +6,11 @@ on:
     paths:
       - 'android-kialink/**'
       - '.github/workflows/build-kialink.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android-kialink/**'
+      - '.github/workflows/build-kialink.yml'
   workflow_dispatch:
 
 permissions:
@@ -43,6 +48,7 @@ jobs:
           path: KIA-Link-v0.1.0.apk
 
       - name: Publish one-click latest release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
