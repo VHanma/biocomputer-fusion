@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.PI
@@ -26,7 +25,6 @@ class CrystalGraphView(
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         strokeWidth = 2f
         style = Paint.Style.STROKE
-        color = Color.argb(85, 140, 210, 255)
     }
     private val nodePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -49,9 +47,7 @@ class CrystalGraphView(
         val cy = height / 2f
         val radius = min(width, height) * 0.38f
 
-        val center = nodes.firstOrNull { it.id == "golden_spot" }
-        if (center != null) positions[center.id] = cx to cy
-
+        nodes.firstOrNull { it.id == "golden_spot" }?.let { positions[it.id] = cx to cy }
         val outer = nodes.filterNot { it.id == "golden_spot" }
         outer.forEachIndexed { index, node ->
             val angle = (2.0 * PI * index / outer.size) - PI / 2.0
@@ -60,23 +56,49 @@ class CrystalGraphView(
                 (cy + sin(angle).toFloat() * radius * wobble)
         }
 
-        val byId = nodes.associateBy { it.id }
-        nodes.forEach { node ->
-            val start = positions[node.id] ?: return@forEach
-            node.fusionPartners.forEach { partnerId ->
-                val partner = byId[partnerId] ?: return@forEach
-                if (node.id < partner.id) {
-                    val end = positions[partner.id] ?: return@forEach
-                    linePaint.color = if (selectedId == node.id || selectedId == partner.id) {
-                        Color.argb(190, 180, 120, 255)
-                    } else Color.argb(75, 100, 210, 255)
-                    canvas.drawLine(start.first, start.second, end.first, end.second, linePaint)
-                }
+        drawOverlapLinks(canvas)
+        drawFusionLinks(canvas)
+        drawNodes(canvas)
+    }
+
+    private fun drawOverlapLinks(canvas: Canvas) {
+        for (i in nodes.indices) {
+            for (j in i + 1 until nodes.size) {
+                val a = nodes[i]
+                val b = nodes[j]
+                if (a.id == "golden_spot" || b.id == "golden_spot") continue
+                val shared = a.domains.intersect(b.domains)
+                if (shared.size < 2) continue
+                val p1 = positions[a.id] ?: continue
+                val p2 = positions[b.id] ?: continue
+                val selected = selectedId == a.id || selectedId == b.id
+                linePaint.strokeWidth = if (selected) 2.4f else 1.2f
+                linePaint.color = if (selected) Color.argb(125, 103, 231, 255) else Color.argb(35, 103, 231, 255)
+                canvas.drawLine(p1.first, p1.second, p2.first, p2.second, linePaint)
             }
         }
+    }
 
-        nodes.forEach { node ->
-            val p = positions[node.id] ?: return@forEach
+    private fun drawFusionLinks(canvas: Canvas) {
+        val byId = nodes.associateBy { it.id }
+        nodes.forEach nodeLoop@ { node ->
+            val start = positions[node.id] ?: return@nodeLoop
+            node.fusionPartners.forEach partnerLoop@ { partnerId ->
+                val partner = byId[partnerId] ?: return@partnerLoop
+                if (node.id >= partner.id) return@partnerLoop
+                val end = positions[partner.id] ?: return@partnerLoop
+                linePaint.strokeWidth = if (selectedId == node.id || selectedId == partner.id) 3.8f else 2.4f
+                linePaint.color = if (selectedId == node.id || selectedId == partner.id) {
+                    Color.argb(220, 198, 135, 255)
+                } else Color.argb(125, 174, 112, 255)
+                canvas.drawLine(start.first, start.second, end.first, end.second, linePaint)
+            }
+        }
+    }
+
+    private fun drawNodes(canvas: Canvas) {
+        nodes.forEach nodeLoop@ { node ->
+            val p = positions[node.id] ?: return@nodeLoop
             val stage = store.stageFor(node.id)
             nodePaint.color = stageColor(stage)
             val size = if (node.id == "golden_spot") 34f else 24f + stage.ordinal * 2.5f
