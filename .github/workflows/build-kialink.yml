@@ -1,4 +1,4 @@
-name: Build KIA Link APK
+name: Build KIA Metamorph APK
 
 on:
   push:
@@ -39,22 +39,22 @@ jobs:
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp android-kialink/app/build/outputs/apk/debug/app-debug.apk KIA-Link-v0.1.0.apk
+        run: cp android-kialink/app/build/outputs/apk/debug/app-debug.apk KIA-Metamorph-v0.2.0.apk
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KIA-Link-v0.1.0
-          path: KIA-Link-v0.1.0.apk
+          name: KIA-Metamorph-v0.2.0
+          path: KIA-Metamorph-v0.2.0.apk
 
       - name: Publish one-click latest release
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete kia-link-latest --yes --cleanup-tag || true
-          gh release create kia-link-latest KIA-Link-v0.1.0.apk \
-            --title "KIA Link v0.1.0" \
-            --notes "Offline two-photo chaos sigil, gnosis, invocation and integration engine." \
+          gh release delete kia-metamorph-latest --yes --cleanup-tag || true
+          gh release create kia-metamorph-latest KIA-Metamorph-v0.2.0.apk \
+            --title "KIA Metamorph v0.2.0" \
+            --notes "Crystal Graph, servitor paradigms, autosummon rules, DreamGate scheduled cues, Astral state separation, Protection Armory, and Phoenix architecture." \
             --latest \
             --target "$GITHUB_SHA"
