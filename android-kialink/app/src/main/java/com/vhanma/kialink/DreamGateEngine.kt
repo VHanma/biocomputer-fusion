@@ -37,17 +37,17 @@ class DreamGateEngine(private val context: Context, private val store: Metamorph
     fun disarm() {
         val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         repeat(8) { index ->
-            alarm.cancel(pending(index, PendingIntent.FLAG_NO_CREATE))
+            existingPending(index)?.let { alarm.cancel(it) }
         }
     }
 
     fun testCue(volumePercent: Int = 18, vibrate: Boolean = true) {
-        DreamCuePlayer.play(context, volumePercent, vibrate)
+        Thread { DreamCuePlayer.play(context.applicationContext, volumePercent, vibrate) }.start()
     }
 
     private fun scheduleOne(index: Int, triggerAt: Long, config: DreamGateConfig) {
         val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val pi = pending(index, PendingIntent.FLAG_UPDATE_CURRENT, config)
+        val pi = pending(index, config)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarm.canScheduleExactAlarms()) {
@@ -63,15 +63,29 @@ class DreamGateEngine(private val context: Context, private val store: Metamorph
         }
     }
 
-    private fun pending(index: Int, flags: Int, config: DreamGateConfig? = null): PendingIntent {
+    private fun pending(index: Int, config: DreamGateConfig): PendingIntent {
         val intent = Intent(context, DreamGateReceiver::class.java).apply {
-            putExtra("volume", config?.volumePercent ?: 18)
-            putExtra("vibrate", config?.vibrationEnabled ?: true)
-            putExtra("mission", config?.mission ?: store.dreamMission())
+            putExtra("volume", config.volumePercent)
+            putExtra("vibrate", config.vibrationEnabled)
+            putExtra("mission", config.mission)
             putExtra("cue_index", index)
         }
-        val safeFlags = flags or PendingIntent.FLAG_IMMUTABLE
-        return PendingIntent.getBroadcast(context, 5400 + index, intent, safeFlags)
+        return PendingIntent.getBroadcast(
+            context,
+            5400 + index,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun existingPending(index: Int): PendingIntent? {
+        val intent = Intent(context, DreamGateReceiver::class.java)
+        return PendingIntent.getBroadcast(
+            context,
+            5400 + index,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 }
 
@@ -84,8 +98,8 @@ class DreamGateReceiver : BroadcastReceiver() {
         val index = intent.getIntExtra("cue_index", 0)
         Thread {
             try {
-                DreamCuePlayer.play(context, volume, vibrate)
-                val store = MetamorphStore(context)
+                DreamCuePlayer.play(context.applicationContext, volume, vibrate)
+                val store = MetamorphStore(context.applicationContext)
                 val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
                 store.appendLog("${fmt.format(Date())} | DREAMGATE CUE ${index + 1} FIRED | $mission")
             } finally {
@@ -145,7 +159,7 @@ object DreamCuePlayer {
         track.play()
         val durationMs = (pcm.size * 1000L / sampleRate) + 150L
         Thread.sleep(durationMs)
-        track.stop()
+        runCatching { track.stop() }
         track.release()
     }
 
@@ -160,7 +174,8 @@ object DreamCuePlayer {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
             } else {
-                @Suppress("DEPRECATION") vibrator.vibrate(pattern, -1)
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(pattern, -1)
             }
         }
     }
