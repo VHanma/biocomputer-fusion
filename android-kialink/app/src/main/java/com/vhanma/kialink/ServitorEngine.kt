@@ -19,8 +19,8 @@ class ServitorEngine(private val context: Context, private val store: MetamorphS
         log("SUMMON ${paradigm.name} via $source")
         return ActivationResult(
             paradigm,
-            paradigm.active.joinToString(" / ") { it.code },
-            paradigm.background.joinToString(" / ") { it.code }.ifBlank { "None" },
+            formatFormation(paradigm.active),
+            formatFormation(paradigm.background).ifBlank { "None" },
             paradigm.subconsciousScript
         )
     }
@@ -46,7 +46,7 @@ class ServitorEngine(private val context: Context, private val store: MetamorphS
             store.addXp(skill.id, 8)
             touched += skill.name
         }
-        log("COMPLETE ${p.name}: $note | AUTO-REABSORB ${roleSet.joinToString { it.code }}")
+        log("COMPLETE ${p.name}: $note | AUTO-REABSORB ${formatFormation(roleSet.toList())}")
         store.setActiveParadigm("")
         return touched.toList()
     }
@@ -64,6 +64,15 @@ class ServitorEngine(private val context: Context, private val store: MetamorphS
 
     fun constitution(role: ServitorRole): ServitorConstitution =
         MetamorphData.servitors.first { it.role == role }
+
+    fun formatFormation(roles: List<ServitorRole>): String {
+        if (roles.isEmpty()) return ""
+        val counts = linkedMapOf<ServitorRole, Int>()
+        roles.forEach { counts[it] = (counts[it] ?: 0) + 1 }
+        return counts.entries.joinToString(" / ") { (role, count) ->
+            if (count > 1) "${role.code}×$count" else role.code
+        }
+    }
 
     private fun log(message: String) {
         val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
