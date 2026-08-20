@@ -17,7 +17,9 @@ class CrystalGraphView(
     private val store: MetamorphStore
 ) : View(context) {
 
-    private val nodes = MetamorphData.skills
+    private val nodes: List<SkillNode>
+        get() = MetamorphData.skills + store.customSkills()
+
     private val positions = mutableMapOf<String, Pair<Float, Float>>()
     private var selectedId: String? = null
     var onNodeSelected: ((SkillNode) -> Unit)? = null
@@ -41,47 +43,59 @@ class CrystalGraphView(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.drawColor(Color.rgb(9, 7, 17))
-        if (nodes.isEmpty()) return
+        val current = nodes
+        if (current.isEmpty()) return
         positions.clear()
         val cx = width / 2f
         val cy = height / 2f
         val radius = min(width, height) * 0.38f
 
-        nodes.firstOrNull { it.id == "golden_spot" }?.let { positions[it.id] = cx to cy }
-        val outer = nodes.filterNot { it.id == "golden_spot" }
+        current.firstOrNull { it.id == "golden_spot" }?.let { positions[it.id] = cx to cy }
+        val outer = current.filterNot { it.id == "golden_spot" }
         outer.forEachIndexed { index, node ->
-            val angle = (2.0 * PI * index / outer.size) - PI / 2.0
-            val wobble = if (index % 2 == 0) 1.0f else 0.82f
+            val angle = (2.0 * PI * index / outer.size.coerceAtLeast(1)) - PI / 2.0
+            val wobble = when (index % 3) { 0 -> 1.0f; 1 -> .84f; else -> .70f }
             positions[node.id] = (cx + cos(angle).toFloat() * radius * wobble) to
                 (cy + sin(angle).toFloat() * radius * wobble)
         }
 
-        drawOverlapLinks(canvas)
-        drawFusionLinks(canvas)
-        drawNodes(canvas)
+        drawRootLinks(canvas, current)
+        drawOverlapLinks(canvas, current)
+        drawFusionLinks(canvas, current)
+        drawNodes(canvas, current)
     }
 
-    private fun drawOverlapLinks(canvas: Canvas) {
-        for (i in nodes.indices) {
-            for (j in i + 1 until nodes.size) {
-                val a = nodes[i]
-                val b = nodes[j]
+    private fun drawRootLinks(canvas: Canvas, current: List<SkillNode>) {
+        val root = positions["golden_spot"] ?: return
+        current.filter { it.id != "golden_spot" && (it.tags.contains("EMERGENT") || it.tags.contains("IDENTITY")) }.forEach { node ->
+            val p = positions[node.id] ?: return@forEach
+            linePaint.color = Color.argb(75, 255, 214, 104)
+            linePaint.strokeWidth = 1.8f
+            canvas.drawLine(root.first, root.second, p.first, p.second, linePaint)
+        }
+    }
+
+    private fun drawOverlapLinks(canvas: Canvas, current: List<SkillNode>) {
+        for (i in current.indices) {
+            for (j in i + 1 until current.size) {
+                val a = current[i]
+                val b = current[j]
                 if (a.id == "golden_spot" || b.id == "golden_spot") continue
                 val shared = a.domains.intersect(b.domains)
                 if (shared.size < 2) continue
                 val p1 = positions[a.id] ?: continue
                 val p2 = positions[b.id] ?: continue
                 val selected = selectedId == a.id || selectedId == b.id
-                linePaint.strokeWidth = if (selected) 2.4f else 1.2f
-                linePaint.color = if (selected) Color.argb(125, 103, 231, 255) else Color.argb(35, 103, 231, 255)
+                linePaint.strokeWidth = if (selected) 2.4f else 1.1f
+                linePaint.color = if (selected) Color.argb(125, 103, 231, 255) else Color.argb(30, 103, 231, 255)
                 canvas.drawLine(p1.first, p1.second, p2.first, p2.second, linePaint)
             }
         }
     }
 
-    private fun drawFusionLinks(canvas: Canvas) {
-        val byId = nodes.associateBy { it.id }
-        nodes.forEach nodeLoop@ { node ->
+    private fun drawFusionLinks(canvas: Canvas, current: List<SkillNode>) {
+        val byId = current.associateBy { it.id }
+        current.forEach nodeLoop@ { node ->
             val start = positions[node.id] ?: return@nodeLoop
             node.fusionPartners.forEach partnerLoop@ { partnerId ->
                 val partner = byId[partnerId] ?: return@partnerLoop
@@ -96,12 +110,12 @@ class CrystalGraphView(
         }
     }
 
-    private fun drawNodes(canvas: Canvas) {
-        nodes.forEach nodeLoop@ { node ->
+    private fun drawNodes(canvas: Canvas, current: List<SkillNode>) {
+        current.forEach nodeLoop@ { node ->
             val p = positions[node.id] ?: return@nodeLoop
             val stage = store.stageFor(node.id)
-            nodePaint.color = stageColor(stage)
-            val size = if (node.id == "golden_spot") 34f else 24f + stage.ordinal * 2.5f
+            nodePaint.color = if (node.tags.contains("EMERGENT")) emergentColor(stage) else stageColor(stage)
+            val size = if (node.id == "golden_spot") 34f else 21f + stage.ordinal * 2.5f
             val path = diamond(p.first, p.second, size)
             if (selectedId == node.id) {
                 val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -112,12 +126,13 @@ class CrystalGraphView(
             }
             canvas.drawPath(path, nodePaint)
             val short = node.name.split(" ").take(2).joinToString(" ")
-            canvas.drawText(short, p.first, p.second + size + 24f, if (node.id == "golden_spot") textPaint else tinyPaint)
+            canvas.drawText(short, p.first, p.second + size + 22f, if (node.id == "golden_spot") textPaint else tinyPaint)
         }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action != MotionEvent.ACTION_UP) return true
+        val current = nodes
         val hit = positions.entries.minByOrNull { (_, p) ->
             val dx = event.x - p.first
             val dy = event.y - p.second
@@ -128,7 +143,7 @@ class CrystalGraphView(
         val dy = event.y - p.second
         if (dx * dx + dy * dy < 3600f) {
             selectedId = hit.key
-            nodes.firstOrNull { it.id == hit.key }?.let { onNodeSelected?.invoke(it) }
+            current.firstOrNull { it.id == hit.key }?.let { onNodeSelected?.invoke(it) }
             invalidate()
         }
         return true
@@ -149,5 +164,14 @@ class CrystalGraphView(
         SkillStage.FUSED -> Color.rgb(164, 118, 255)
         SkillStage.SYSTEM -> Color.rgb(255, 174, 80)
         SkillStage.SEED -> Color.rgb(255, 224, 105)
+    }
+
+    private fun emergentColor(stage: SkillStage): Int = when (stage) {
+        SkillStage.FRAGMENT -> Color.rgb(125, 84, 145)
+        SkillStage.SHARD -> Color.rgb(175, 105, 235)
+        SkillStage.COMPLETE -> Color.rgb(225, 135, 255)
+        SkillStage.FUSED -> Color.rgb(255, 148, 228)
+        SkillStage.SYSTEM -> Color.rgb(255, 183, 116)
+        SkillStage.SEED -> Color.rgb(255, 229, 118)
     }
 }
