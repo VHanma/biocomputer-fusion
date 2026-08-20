@@ -1,6 +1,10 @@
 package com.vhanma.kialink
 
 import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
+import java.security.MessageDigest
+import java.util.Locale
 
 class MetamorphStore(context: Context) {
     private val prefs = context.getSharedPreferences("metamorph_core", Context.MODE_PRIVATE)
@@ -62,9 +66,107 @@ class MetamorphStore(context: Context) {
 
     fun appendLog(entry: String) {
         val old = prefs.getString("event_log", "") ?: ""
-        val combined = (entry + "\n" + old).lineSequence().take(80).joinToString("\n")
+        val combined = (entry + "\n" + old).lineSequence().take(120).joinToString("\n")
         prefs.edit().putString("event_log", combined).apply()
     }
 
     fun eventLog(): String = prefs.getString("event_log", "") ?: ""
+
+    fun customSkills(): List<SkillNode> {
+        val raw = prefs.getString("custom_skills", "[]") ?: "[]"
+        val arr = runCatching { JSONArray(raw) }.getOrDefault(JSONArray())
+        val out = mutableListOf<SkillNode>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            out += SkillNode(
+                id = o.optString("id"),
+                name = o.optString("name"),
+                description = o.optString("description"),
+                domains = jsonSet(o.optJSONArray("domains")),
+                sources = jsonSet(o.optJSONArray("sources")),
+                prerequisites = jsonSet(o.optJSONArray("prerequisites")),
+                fusionPartners = jsonSet(o.optJSONArray("fusionPartners")),
+                tags = jsonSet(o.optJSONArray("tags"))
+            )
+        }
+        return out.filter { it.id.isNotBlank() && it.name.isNotBlank() }
+    }
+
+    fun addCustomSkill(
+        name: String,
+        description: String,
+        domains: Set<String>,
+        sources: Set<String>,
+        fusionPartners: Set<String> = emptySet(),
+        tags: Set<String> = emptySet(),
+        initialXp: Int = 25
+    ): SkillNode {
+        val normalized = name.trim().lowercase(Locale.US).replace(Regex("[^a-z0-9]+"), "_").trim('_')
+        val shortHash = MessageDigest.getInstance("SHA-256")
+            .digest((name + sources.joinToString()).toByteArray())
+            .take(4).joinToString("") { "%02x".format(it) }
+        val id = "custom_${normalized.take(32)}_$shortHash"
+        val node = SkillNode(
+            id = id,
+            name = name.trim(),
+            description = description.trim(),
+            domains = domains,
+            sources = sources,
+            fusionPartners = fusionPartners,
+            tags = tags
+        )
+        val all = customSkills().toMutableList()
+        val existing = all.indexOfFirst { it.id == id || it.name.equals(node.name, true) }
+        if (existing >= 0) all[existing] = node else all += node
+        saveCustomSkills(all)
+        if (xpFor(id) == 0 && initialXp > 0) addXp(id, initialXp)
+        return node
+    }
+
+    private fun saveCustomSkills(skills: List<SkillNode>) {
+        val arr = JSONArray()
+        skills.takeLast(80).forEach { s ->
+            arr.put(JSONObject().apply {
+                put("id", s.id)
+                put("name", s.name)
+                put("description", s.description)
+                put("domains", JSONArray(s.domains.toList()))
+                put("sources", JSONArray(s.sources.toList()))
+                put("prerequisites", JSONArray(s.prerequisites.toList()))
+                put("fusionPartners", JSONArray(s.fusionPartners.toList()))
+                put("tags", JSONArray(s.tags.toList()))
+            })
+        }
+        prefs.edit().putString("custom_skills", arr.toString()).apply()
+    }
+
+    fun setPairAnchor(sealHex: String, targetName: String, traits: String, selfUri: String?, targetUri: String?) {
+        prefs.edit()
+            .putString("pair_seal", sealHex)
+            .putString("pair_target", targetName)
+            .putString("pair_traits", traits)
+            .putString("pair_self_uri", selfUri ?: "")
+            .putString("pair_target_uri", targetUri ?: "")
+            .apply()
+    }
+
+    fun pairSeal(): String = prefs.getString("pair_seal", "") ?: ""
+    fun pairTarget(): String = prefs.getString("pair_target", "") ?: ""
+    fun pairTraits(): String = prefs.getString("pair_traits", "") ?: ""
+    fun pairSelfUri(): String = prefs.getString("pair_self_uri", "") ?: ""
+    fun pairTargetUri(): String = prefs.getString("pair_target_uri", "") ?: ""
+
+    fun putRitualValue(key: String, value: String) {
+        prefs.edit().putString("ritual_$key", value).apply()
+    }
+
+    fun ritualValue(key: String, fallback: String = ""): String =
+        prefs.getString("ritual_$key", fallback) ?: fallback
+
+    private fun jsonSet(arr: JSONArray?): Set<String> {
+        if (arr == null) return emptySet()
+        val out = linkedSetOf<String>()
+        for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let(out::add)
+        return out
+    }
 }
