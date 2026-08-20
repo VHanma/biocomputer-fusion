@@ -39,7 +39,7 @@ class ServitorEngine(private val context: Context, private val store: MetamorphS
         val p = currentParadigm() ?: return emptyList()
         val roleSet = (p.active + p.background).toSet()
         val touched = linkedSetOf<String>()
-        val skillTargets = MetamorphData.skills.filter { skill ->
+        val skillTargets = (MetamorphData.skills + store.customSkills()).filter { skill ->
             roleSet.any { role -> skill.domains.contains(role.code) }
         }
         skillTargets.forEach { skill ->
