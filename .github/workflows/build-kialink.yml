@@ -39,13 +39,13 @@ jobs:
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp android-kialink/app/build/outputs/apk/debug/app-debug.apk KIA-Metamorph-v0.2.0.apk
+        run: cp android-kialink/app/build/outputs/apk/debug/app-debug.apk KIA-Metamorph-v0.3.0.apk
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KIA-Metamorph-v0.2.0
-          path: KIA-Metamorph-v0.2.0.apk
+          name: KIA-Metamorph-v0.3.0
+          path: KIA-Metamorph-v0.3.0.apk
 
       - name: Publish one-click latest release
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -53,8 +53,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete kia-metamorph-latest --yes --cleanup-tag || true
-          gh release create kia-metamorph-latest KIA-Metamorph-v0.2.0.apk \
-            --title "KIA Metamorph v0.2.0" \
-            --notes "Crystal Graph, servitor paradigms, autosummon rules, DreamGate scheduled cues, Astral state separation, Protection Armory, and Phoenix architecture." \
+          gh release create kia-metamorph-latest KIA-Metamorph-v0.3.0.apk \
+            --title "KIA Metamorph v0.3.0" \
+            --notes "Restores the full two-photo Metamorph Forge and adds emergent Crystal Shards, multi-form sigils, PNG sigil export, per-servitor images, editable custom servitors/tulpas, pair anchors, Jung integration, living hypersigil, Inner Domain, DreamGate, Astral Dojo, Protection Armory, Phoenix Down, and the overlapping physical Crystal tree." \
             --latest \
             --target "$GITHUB_SHA"
