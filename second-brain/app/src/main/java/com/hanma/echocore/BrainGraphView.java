@@ -28,7 +28,7 @@ public class BrainGraphView extends View {
     public BrainGraphView(Context context, BrainDatabase db) {
         super(context);
         this.db = db;
-        setMinimumHeight(dp(430));
+        setMinimumHeight((int) dp(430));
         setBackgroundColor(0xFF090B10);
         linePaint.setColor(0x337C9CFF);
         linePaint.setStrokeWidth(dp(1));
