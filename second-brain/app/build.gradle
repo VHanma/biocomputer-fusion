@@ -7,7 +7,7 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.hanma.echocore.neural.omega.link'
+        applicationId 'com.hanma.echocore.neural.omega.cloudlink'
         minSdk 26
         targetSdk 35
         versionCode 6
