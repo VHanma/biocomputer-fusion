@@ -8,26 +8,17 @@
         android:allowBackup="true"
         android:fullBackupContent="true"
         android:icon="@drawable/ic_launcher"
-        android:label="EchoCore CloudLink"
+        android:label="EchoCore AutoLink"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
-        <activity
-            android:name=".CognitiveOSActivity"
-            android:screenOrientation="portrait"
-            android:exported="false" />
-        <activity
-            android:name=".CloudLinkActivity"
-            android:screenOrientation="portrait"
-            android:exported="true">
+        <activity android:name=".CognitiveOSActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".CloudLinkActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".SourceActivity"
-            android:screenOrientation="portrait"
-            android:exported="true">
+        <activity android:name=".SourceActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
