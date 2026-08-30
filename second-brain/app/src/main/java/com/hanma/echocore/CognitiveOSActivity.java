@@ -20,17 +20,18 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class CognitiveOSActivity extends Activity {
     private static final int BG=0xFF07090D,PANEL=0xFF111722,PANEL2=0xFF192231,TEXT=0xFFF4F7FF,MUTED=0xFF98A4BA,ACCENT=0xFF7C9CFF,ACCENT2=0xFF56E0C5,WARM=0xFFFFB86B,DANGER=0xFFFF7A90;
-    private BrainDatabase brain;private BrainEngine engine;private SourceCatalog sources;private CognitiveStore store;private CognitiveOrchestrator omega;private SecurePrefs prefs;private ModelGateway model;
+    private BrainDatabase brain;private BrainEngine engine;private SourceCatalog sources;private CognitiveStore store;private CognitiveOrchestrator omega;private SecurePrefs prefs;private ModelGateway model;private EchoLinkServer echoLink;
     private final ExecutorService work=Executors.newSingleThreadExecutor();
     private LinearLayout body;
 
-    @Override protected void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);brain=new BrainDatabase(this);engine=new BrainEngine(brain);sources=new SourceCatalog(this);store=new CognitiveStore(this);omega=new CognitiveOrchestrator(brain,engine,sources,store);prefs=new SecurePrefs(this);model=new ModelGateway(prefs);setContentView(shell());render();}
-    @Override protected void onResume(){super.onResume();if(body!=null)render();}
+    @Override protected void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);brain=new BrainDatabase(this);engine=new BrainEngine(brain);sources=new SourceCatalog(this);store=new CognitiveStore(this);omega=new CognitiveOrchestrator(brain,engine,sources,store);prefs=new SecurePrefs(this);model=new ModelGateway(prefs);echoLink=EchoLinkServer.getInstance(this,brain,engine,sources,store,omega,prefs,model);setContentView(shell());ensureEchoLinkState();render();}
+    @Override protected void onResume(){super.onResume();ensureEchoLinkState();if(body!=null)render();}
     @Override protected void onDestroy(){super.onDestroy();work.shutdownNow();}
 
     private View shell(){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(BG);
@@ -45,7 +46,8 @@ public class CognitiveOSActivity extends Activity {
         LinearLayout launch=new LinearLayout(this);launch.setOrientation(LinearLayout.HORIZONTAL);
         Button neural=button("NEURAL BRAIN",PANEL2,ACCENT);neural.setOnClickListener(v->startActivity(new Intent(this,MainActivity.class)));launch.addView(neural,new LinearLayout.LayoutParams(0,dp(48),1f));
         Button src=button("SOURCE CORTEX",PANEL2,ACCENT2);src.setOnClickListener(v->startActivity(new Intent(this,SourceActivity.class)));LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(0,dp(48),1f);sp.setMargins(dp(7),0,0,0);launch.addView(src,sp);body.addView(launch,lp(-1,-2,0,0,0,8));
-        LinearLayout tools=new LinearLayout(this);tools.setOrientation(LinearLayout.HORIZONTAL);Button auto=button("AUTOPILOT",PANEL2,WARM);auto.setOnClickListener(v->runAutopilot());tools.addView(auto,new LinearLayout.LayoutParams(0,dp(46),1f));Button gaps=button("GAP SCAN",PANEL2,ACCENT2);gaps.setOnClickListener(v->dialog("Knowledge gaps",omega.knowledgeGaps()));LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(0,dp(46),1f);gp.setMargins(dp(6),0,0,0);tools.addView(gaps,gp);Button settings=button("AI SETTINGS",PANEL2,ACCENT);settings.setOnClickListener(v->modelSettings());LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(0,dp(46),1f);mp.setMargins(dp(6),0,0,0);tools.addView(settings,mp);body.addView(tools,lp(-1,-2,0,0,0,14));
+        LinearLayout tools=new LinearLayout(this);tools.setOrientation(LinearLayout.HORIZONTAL);Button auto=button("AUTOPILOT",PANEL2,WARM);auto.setOnClickListener(v->runAutopilot());tools.addView(auto,new LinearLayout.LayoutParams(0,dp(46),1f));Button gaps=button("GAP SCAN",PANEL2,ACCENT2);gaps.setOnClickListener(v->dialog("Knowledge gaps",omega.knowledgeGaps()));LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(0,dp(46),1f);gp.setMargins(dp(6),0,0,0);tools.addView(gaps,gp);Button settings=button("AI SETTINGS",PANEL2,ACCENT);settings.setOnClickListener(v->modelSettings());LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(0,dp(46),1f);mp.setMargins(dp(6),0,0,0);tools.addView(settings,mp);body.addView(tools,lp(-1,-2,0,0,0,8));
+        Button link=button(echoLink.isRunning()?"ECHOLINK · LIVE":"ECHOLINK",PANEL2,echoLink.isRunning()?ACCENT2:ACCENT);link.setOnClickListener(v->echoLinkSettings());body.addView(link,lp(-1,dp(44),0,0,0,14));
 
         body.addView(section("ASK OMEGA","Evidence is retrieved from personal memory and full imported documents before the reasoning pass."));
         LinearLayout askCard=card();EditText ask=edit("Ask a question, solve a problem, test an idea, plan a goal…",4);askCard.addView(ask,lp(-1,dp(112),0,0,0,8));
@@ -70,6 +72,26 @@ public class CognitiveOSActivity extends Activity {
     private String conversationContext(){StringBuilder b=new StringBuilder();for(String[] t:store.recentTurns(8)){b.append(t[0]).append(": ").append(trim(t[1],500)).append('\n');}return b.toString().trim();}
 
     private void runAutopilot(){toast("Running consolidation + metacognitive cycle…");work.execute(()->{String r=omega.autopilotCycle();store.addTurn("OMEGA",r,"AUTOPILOT");runOnUiThread(()->{dialog("Omega Autopilot",r);render();});});}
+
+    private void ensureEchoLinkState(){if(echoLink==null)return;boolean enabled=prefs.getBool("echolink_enabled",false);if(enabled&&!echoLink.isRunning()){try{echoLink.start();}catch(Exception ignored){}}else if(!enabled&&echoLink.isRunning())echoLink.stop();}
+
+    private void echoLinkSettings(){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(8),dp(2),dp(8),0);
+        CheckBox enabled=new CheckBox(this);enabled.setText("Enable EchoLink local bridge");enabled.setTextColor(TEXT);enabled.setChecked(echoLink.isRunning()||prefs.getBool("echolink_enabled",false));box.addView(enabled);
+        EditText port=edit("Port",1);port.setText(String.valueOf(echoLink.port()));box.addView(labelled("LOCAL PORT",port));
+        TextView endpoint=text(echoLink.endpoint(),11,ACCENT2,true);box.addView(labelled("ENDPOINT",endpoint));
+        TextView token=text(echoLink.token(),11,WARM,true);box.addView(labelled("PAIRING TOKEN",token));
+        CheckBox read=new CheckBox(this);read.setText("Allow brain read / query");read.setTextColor(TEXT);read.setChecked(echoLink.permRead());box.addView(read);
+        CheckBox write=new CheckBox(this);write.setText("Allow memory write / consolidation");write.setTextColor(TEXT);write.setChecked(echoLink.permWrite());box.addView(write);
+        CheckBox src=new CheckBox(this);src.setText("Allow document / source access");src.setTextColor(TEXT);src.setChecked(echoLink.permSources());box.addView(src);
+        CheckBox proj=new CheckBox(this);proj.setText("Allow project / task access");proj.setTextColor(TEXT);proj.setChecked(echoLink.permProjects());box.addView(proj);
+        TextView note=text("EchoLink binds to 127.0.0.1 only. Any companion app, local model host, automation tool, or future ChatGPT bridge on the same device can talk to this brain using the token below in header X-EchoCore-Token. Endpoints include /capabilities, /brain/answer, /brain/search, /memory/add, /source/import_text, /source/search, /projects, /project/add, /task/add and /consolidate.",10,MUTED,false);box.addView(note,lp(-1,-2,0,8,0,0));
+        AlertDialog d=new AlertDialog.Builder(this).setTitle("EchoLink bridge").setView(box).setNegativeButton("Close",null).setNeutralButton("Regenerate token",null).setPositiveButton("Save",null).create();
+        d.setOnShowListener(x->{
+            d.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{echoLink.regenerateToken();token.setText(echoLink.token());});
+            d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{int p;try{p=Integer.parseInt(port.getText().toString().trim());}catch(Exception e){p=18432;}boolean wasRunning=echoLink.isRunning();echoLink.setPermissions(read.isChecked(),write.isChecked(),src.isChecked(),proj.isChecked());echoLink.setPort(p);prefs.putBool("echolink_enabled",enabled.isChecked());try{if(wasRunning)echoLink.stop();if(enabled.isChecked())echoLink.start();endpoint.setText(echoLink.endpoint());}catch(Exception e){toast("EchoLink start failed: "+safeError(e));}render();d.dismiss();});
+        });
+        d.show();
+    }
 
     private void modelSettings(){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(8),dp(2),dp(8),0);CheckBox enabled=new CheckBox(this);enabled.setText("Enable optional AI model layer");enabled.setTextColor(TEXT);enabled.setChecked(prefs.getBool("model_enabled",false));box.addView(enabled);
         EditText endpoint=edit("Full OpenAI-compatible chat endpoint URL",2);endpoint.setText(prefs.get("endpoint",""));box.addView(labelled("ENDPOINT",endpoint));EditText modelName=edit("Model name",1);modelName.setText(prefs.get("model","local-model"));box.addView(labelled("MODEL",modelName));EditText key=edit("API key (optional for local servers)",1);key.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);String existing=prefs.getSecret("api_key");if(!existing.isEmpty())key.setHint("Stored securely · leave blank to keep current key");box.addView(labelled("API KEY",key));TextView note=text("The key is encrypted with Android Keystore. When AI Core is enabled, retrieved question context can be sent to the endpoint you configure. Offline mode sends nothing.",10,MUTED,false);box.addView(note,lp(-1,-2,0,8,0,0));
