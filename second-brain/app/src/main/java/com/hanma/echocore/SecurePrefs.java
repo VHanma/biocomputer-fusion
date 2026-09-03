@@ -22,9 +22,15 @@ public class SecurePrefs {
     public SecurePrefs(Context context){prefs=context.getSharedPreferences(PREF,Context.MODE_PRIVATE);}
 
     public void put(String key,String value){prefs.edit().putString(key,value==null?"":value).apply();}
-    public String get(String key,String fallback){return prefs.getString(key,fallback);}
+    public String get(String key,String fallback){try{return prefs.getString(key,fallback);}catch(ClassCastException e){return fallback;}}
     public void putBool(String key,boolean value){prefs.edit().putBoolean(key,value).apply();}
-    public boolean getBool(String key,boolean fallback){return prefs.getBoolean(key,fallback);}
+    public boolean getBool(String key,boolean fallback){try{return prefs.getBoolean(key,fallback);}catch(ClassCastException e){return fallback;}}
+    public void putInt(String key,int value){prefs.edit().putInt(key,value).apply();}
+    public int getInt(String key,int fallback){try{return prefs.getInt(key,fallback);}catch(ClassCastException e){return fallback;}}
+    public void putLong(String key,long value){prefs.edit().putLong(key,value).apply();}
+    public long getLong(String key,long fallback){try{return prefs.getLong(key,fallback);}catch(ClassCastException e){return fallback;}}
+    public boolean contains(String key){return prefs.contains(key);}
+    public void remove(String key){prefs.edit().remove(key).apply();}
 
     public void putSecret(String key,String value){
         try{
@@ -38,7 +44,9 @@ public class SecurePrefs {
     }
 
     public String getSecret(String key){
-        String payload=prefs.getString(key,"");if(payload==null||payload.isEmpty())return "";
+        String payload;
+        try{payload=prefs.getString(key,"");}catch(ClassCastException e){return "";}
+        if(payload==null||payload.isEmpty())return "";
         try{
             String[] p=payload.split(":",2);if(p.length!=2)return "";
             SecretKey secret=getOrCreateKey();
@@ -50,7 +58,10 @@ public class SecurePrefs {
 
     private SecretKey getOrCreateKey() throws Exception{
         KeyStore ks=KeyStore.getInstance("AndroidKeyStore");ks.load(null);
-        if(ks.containsAlias(ALIAS))return ((KeyStore.SecretKeyEntry)ks.getEntry(ALIAS,null)).getSecretKey();
+        if(ks.containsAlias(ALIAS)){
+            try{return ((KeyStore.SecretKeyEntry)ks.getEntry(ALIAS,null)).getSecretKey();}
+            catch(Exception badKey){try{ks.deleteEntry(ALIAS);}catch(Exception ignored){}}
+        }
         KeyGenerator kg=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");
         kg.init(new KeyGenParameterSpec.Builder(ALIAS,KeyProperties.PURPOSE_ENCRYPT|KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());
