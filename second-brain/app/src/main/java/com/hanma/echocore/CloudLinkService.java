@@ -66,9 +66,9 @@ public class CloudLinkService extends Service {
             engine=new BrainEngine(brain);
             sources=new SourceCatalog(this);
             store=new CognitiveStore(this);
-            omega=new CognitiveOrchestrator(brain,engine,sources,store);
+            omega=new NexusOrchestrator(brain,engine,sources,store);
             coreReady=true;
-            diag.event("SERVICE","Core databases initialized");
+            diag.event("SERVICE","Core databases initialized with Nexus evidence engine");
         }catch(Throwable t){
             diag.error("service_onCreate",t);
             coreReady=false;
@@ -183,6 +183,7 @@ public class CloudLinkService extends Service {
             o.put("failures",consecutiveFailures);
             o.put("relay_ms",diag.lastRelayMs());
             o.put("app_version",APP_VERSION);
+            o.put("reasoner","NexusOrchestrator");
         }catch(Throwable ignored){}
         return o;
     }
@@ -234,8 +235,8 @@ public class CloudLinkService extends Service {
                 String q=p.optString("question",p.optString("q",""));
                 String m=p.optString("mode","DEEP").toUpperCase(Locale.US);
                 String answer=omega.localAnswer(q,m);
-                store.addTurn("REMOTE",q,m);store.addTurn("OMEGA",answer,m);
-                return new JSONObject().put("answer",answer).put("mode",m);
+                store.addTurn("REMOTE",q,m);store.addTurn("NEXUS",answer,m);
+                return new JSONObject().put("answer",answer).put("mode",m).put("reasoner","NexusOrchestrator");
             }
             case "brain_search": return memoriesJson(brain.search(p.optString("q",""),Math.max(1,Math.min(50,p.optInt("limit",8)))));
             case "memory_add":{
@@ -279,6 +280,7 @@ public class CloudLinkService extends Service {
         o.put("strongest",memoriesJson(brain.strongest(limit)));
         o.put("projects",projectsJson());
         o.put("knowledge_gaps",omega.knowledgeGaps());
+        o.put("reasoner","NexusOrchestrator");
         return o;
     }
 
