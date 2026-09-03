@@ -14,6 +14,7 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
         android:theme="@style/AppTheme">
+        <activity android:name=".NexusBrainActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".CognitiveOSActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".CloudLinkActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter>
