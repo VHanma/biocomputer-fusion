@@ -55,10 +55,10 @@ public class CloudLinkActivity extends Activity {
         Button reset=button("RESET LINK",PANEL,WARM);reset.setOnClickListener(v->{CloudLinkService.clearCredentials(this);prefs.putBool(CloudLinkService.KEY_ENABLED,true);autoStart();diag.event("USER","Link credentials reset");toast("Fresh secure link requested");});
         row.addView(repair,new LinearLayout.LayoutParams(0,dp(50),1));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(0,dp(50),1);rp.setMargins(dp(8),0,0,0);row.addView(reset,rp);body.addView(row,lp(-1,-2,0,0,0,8));
 
-        Button omega=button("OPEN FULL OMEGA BRAIN",PANEL,ACCENT2);omega.setOnClickListener(v->safeStart(CognitiveOSActivity.class));body.addView(omega,lp(-1,dp(52),0,0,0,12));
+        Button nexus=button("OPEN FULL NEXUS BRAIN",PANEL,ACCENT2);nexus.setOnClickListener(v->safeStart(NexusBrainActivity.class));body.addView(nexus,lp(-1,dp(52),0,0,0,12));
 
         LinearLayout thinker=card();thinker.addView(text("QUICK THINK",13,ACCENT2,true));
-        thinker.addView(text("Ask the local EchoCore brain without leaving Nexus.",10,MUTED,false),lp(-1,-2,0,3,0,7));
+        thinker.addView(text("Evidence-balanced local reasoning without leaving the bridge.",10,MUTED,false),lp(-1,-2,0,3,0,7));
         question=new EditText(this);question.setHint("Question, decision, goal, or idea…");question.setHintTextColor(0xFF657086);question.setTextColor(TEXT);question.setTextSize(12);question.setSingleLine(false);question.setMinLines(2);question.setMaxLines(5);question.setPadding(dp(10),dp(10),dp(10),dp(10));question.setBackground(round(BG,10));thinker.addView(question,lp(-1,-2,0,0,0,8));
         LinearLayout thinkRow=new LinearLayout(this);thinkRow.setOrientation(LinearLayout.HORIZONTAL);
         Button deep=button("DEEP THINK",ACCENT,BG);deep.setOnClickListener(v->runBrain("DEEP"));
@@ -73,7 +73,7 @@ public class CloudLinkActivity extends Activity {
         Button stop=button("STOP LINK",PANEL,DANGER);stop.setOnClickListener(v->{prefs.putBool(CloudLinkService.KEY_ENABLED,false);stopService(new Intent(this,CloudLinkService.class));diag.setState("STOPPED");updateStatus();toast("AutoLink stopped");});
         drow.addView(copy,new LinearLayout.LayoutParams(0,dp(46),1));LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(0,dp(46),1);sp.setMargins(dp(8),0,0,0);drow.addView(stop,sp);dcard.addView(drow);body.addView(dcard,lp(-1,-2,0,0,0,12));
 
-        body.addView(text("Nexus v8 keeps the phone credential encrypted in Android Keystore, retries transient network failures with backoff, journals completed commands so retries do not duplicate writes, captures uncaught crashes, and enters safe mode if the AutoLink worker repeatedly dies.",11,MUTED,false));
+        body.addView(text("Nexus v8 keeps the phone credential encrypted in Android Keystore, retries transient network failures with backoff, journals completed commands so retries do not duplicate writes, captures uncaught crashes, and enters safe mode if the AutoLink worker repeatedly dies. Research retrieval reserves room for sources and observations instead of letting SELF/BELIEF traces dominate.",11,MUTED,false));
     }
 
     private void autoStart(){
@@ -98,19 +98,23 @@ public class CloudLinkActivity extends Activity {
 
     private void runBrain(String mode){
         String q=question.getText().toString().trim();if(q.isEmpty()){toast("Type something first");return;}
-        brainOutput.setVisibility(View.VISIBLE);brainOutput.setText("Thinking locally…");
+        brainOutput.setVisibility(View.VISIBLE);brainOutput.setText("Retrieving evidence…");
         new Thread(()->{
+            BrainDatabase b=null;SourceCatalog s=null;CognitiveStore c=null;
             try{
-                BrainDatabase b=new BrainDatabase(this);BrainEngine e=new BrainEngine(b);SourceCatalog s=new SourceCatalog(this);CognitiveStore c=new CognitiveStore(this);CognitiveOrchestrator o=new CognitiveOrchestrator(b,e,s,c);String answer=o.localAnswer(q,mode);c.addTurn("USER",q,mode);c.addTurn("OMEGA",answer,mode);runOnUiThread(()->brainOutput.setText(answer));
+                b=new BrainDatabase(this);BrainEngine e=new BrainEngine(b);s=new SourceCatalog(this);c=new CognitiveStore(this);NexusOrchestrator o=new NexusOrchestrator(b,e,s,c);String answer=o.localAnswer(q,mode);c.addTurn("USER",q,mode);c.addTurn("NEXUS",answer,mode);runOnUiThread(()->brainOutput.setText(answer));
             }catch(Throwable t){diag.error("quick_think",t);runOnUiThread(()->brainOutput.setText("Quick Think hit an error. It was captured in diagnostics."));}
+            finally{try{if(b!=null)b.close();}catch(Throwable ignored){}try{if(s!=null)s.close();}catch(Throwable ignored){}try{if(c!=null)c.close();}catch(Throwable ignored){}}
         },"NexusQuickThink").start();
     }
 
     private void runGapScan(){
         brainOutput.setVisibility(View.VISIBLE);brainOutput.setText("Scanning knowledge gaps…");
         new Thread(()->{
-            try{BrainDatabase b=new BrainDatabase(this);BrainEngine e=new BrainEngine(b);SourceCatalog s=new SourceCatalog(this);CognitiveStore c=new CognitiveStore(this);CognitiveOrchestrator o=new CognitiveOrchestrator(b,e,s,c);String answer=o.knowledgeGaps();runOnUiThread(()->brainOutput.setText(answer));}
+            BrainDatabase b=null;SourceCatalog s=null;CognitiveStore c=null;
+            try{b=new BrainDatabase(this);BrainEngine e=new BrainEngine(b);s=new SourceCatalog(this);c=new CognitiveStore(this);NexusOrchestrator o=new NexusOrchestrator(b,e,s,c);String answer=o.knowledgeGaps();runOnUiThread(()->brainOutput.setText(answer));}
             catch(Throwable t){diag.error("gap_scan",t);runOnUiThread(()->brainOutput.setText("Gap Scan error captured in diagnostics."));}
+            finally{try{if(b!=null)b.close();}catch(Throwable ignored){}try{if(s!=null)s.close();}catch(Throwable ignored){}try{if(c!=null)c.close();}catch(Throwable ignored){}}
         },"NexusGapScan").start();
     }
 
