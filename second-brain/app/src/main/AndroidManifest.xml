@@ -10,7 +10,7 @@
         android:allowBackup="true"
         android:fullBackupContent="true"
         android:icon="@drawable/ic_launcher"
-        android:label="EchoCore Nexus"
+        android:label="EchoCore Nexus v9 DocSafe"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
         android:theme="@style/AppTheme">
