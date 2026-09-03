@@ -43,7 +43,7 @@ public class CloudLinkActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(BG);
         LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(dp(16),dp(20),dp(16),dp(28));body.setBackgroundColor(BG);scroll.addView(body,new ScrollView.LayoutParams(-1,-2));setContentView(scroll);
         body.addView(text("ECHOCORE Ω NEXUS",25,TEXT,true));
-        body.addView(text("AUTOLINK v8 · CRASH-SHIELDED COGNITIVE BRIDGE",11,ACCENT2,true),lp(-1,-2,0,3,0,16));
+        body.addView(text("AUTOLINK v9 · DOCSAFE COGNITIVE BRIDGE",11,ACCENT2,true),lp(-1,-2,0,3,0,16));
 
         LinearLayout status=card();
         statusTitle=text("NEXUS · STARTING",15,WARM,true);status.addView(statusTitle);
@@ -55,7 +55,10 @@ public class CloudLinkActivity extends Activity {
         Button reset=button("RESET LINK",PANEL,WARM);reset.setOnClickListener(v->{CloudLinkService.clearCredentials(this);prefs.putBool(CloudLinkService.KEY_ENABLED,true);autoStart();diag.event("USER","Link credentials reset");toast("Fresh secure link requested");});
         row.addView(repair,new LinearLayout.LayoutParams(0,dp(50),1));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(0,dp(50),1);rp.setMargins(dp(8),0,0,0);row.addView(reset,rp);body.addView(row,lp(-1,-2,0,0,0,8));
 
-        Button nexus=button("OPEN FULL NEXUS BRAIN",PANEL,ACCENT2);nexus.setOnClickListener(v->safeStart(NexusBrainActivity.class));body.addView(nexus,lp(-1,dp(52),0,0,0,12));
+        LinearLayout nav=new LinearLayout(this);nav.setOrientation(LinearLayout.HORIZONTAL);
+        Button sources=button("SOURCE CORTEX",PANEL,ACCENT2);sources.setOnClickListener(v->safeStart(SourceActivity.class));
+        Button nexus=button("FULL NEXUS BRAIN",PANEL,ACCENT);nexus.setOnClickListener(v->safeStart(NexusBrainActivity.class));
+        nav.addView(sources,new LinearLayout.LayoutParams(0,dp(52),1));LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(0,dp(52),1);np.setMargins(dp(8),0,0,0);nav.addView(nexus,np);body.addView(nav,lp(-1,-2,0,0,0,12));
 
         LinearLayout thinker=card();thinker.addView(text("QUICK THINK",13,ACCENT2,true));
         thinker.addView(text("Evidence-balanced local reasoning without leaving the bridge.",10,MUTED,false),lp(-1,-2,0,3,0,7));
@@ -73,7 +76,7 @@ public class CloudLinkActivity extends Activity {
         Button stop=button("STOP LINK",PANEL,DANGER);stop.setOnClickListener(v->{prefs.putBool(CloudLinkService.KEY_ENABLED,false);stopService(new Intent(this,CloudLinkService.class));diag.setState("STOPPED");updateStatus();toast("AutoLink stopped");});
         drow.addView(copy,new LinearLayout.LayoutParams(0,dp(46),1));LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(0,dp(46),1);sp.setMargins(dp(8),0,0,0);drow.addView(stop,sp);dcard.addView(drow);body.addView(dcard,lp(-1,-2,0,0,0,12));
 
-        body.addView(text("Nexus v8 keeps the phone credential encrypted in Android Keystore, retries transient network failures with backoff, journals completed commands so retries do not duplicate writes, captures uncaught crashes, and enters safe mode if the AutoLink worker repeatedly dies. Research retrieval reserves room for sources and observations instead of letting SELF/BELIEF traces dominate.",11,MUTED,false));
+        body.addView(text("Nexus v9 adds DocSafe streaming ingestion: PDFs are copied to disk-backed scratch space and processed page by page; Office/EPUB/ZIP and plain text are streamed into bounded SQLite chunks; large summaries are sampled; low-memory guards stop a pathological import before Android reaches process-killing heap exhaustion.",11,MUTED,false));
     }
 
     private void autoStart(){
