@@ -11,18 +11,20 @@
         android:allowBackup="true"
         android:fullBackupContent="true"
         android:icon="@drawable/ic_launcher"
-        android:label="EchoCore Nexus v10 DocFlow"
+        android:label="EchoCore Ω Ascendant"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
         android:theme="@style/AppTheme">
-        <activity android:name=".NexusBrainActivity" android:screenOrientation="portrait" android:exported="false" />
-        <activity android:name=".CognitiveOSActivity" android:screenOrientation="portrait" android:exported="false" />
-        <activity android:name=".CloudLinkActivity" android:screenOrientation="portrait" android:exported="true">
+        <activity android:name=".AscendantActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".SanctumActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".NexusBrainActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".CognitiveOSActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".CloudLinkActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".SourceActivity" android:screenOrientation="portrait" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -32,15 +34,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="false" />
-        <service
-            android:name=".CloudLinkService"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="remoteMessaging" />
-        <service
-            android:name=".DocumentImportService"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="dataSync" />
+        <service android:name=".CloudLinkService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="remoteMessaging" />
+        <service android:name=".DocumentImportService" android:process=":phoenix" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
