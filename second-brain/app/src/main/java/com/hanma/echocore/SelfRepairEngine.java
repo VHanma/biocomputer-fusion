@@ -1,0 +1,12 @@
+package com.hanma.echocore;
+
+import android.content.Context;import android.database.Cursor;import android.database.sqlite.SQLiteDatabase;import java.io.File;import java.util.Locale;
+
+/** Conservative self-repair: inspect, clean transient debris, recover queues, never erase user knowledge. */
+public class SelfRepairEngine {
+    private final Context context;private final AscendantStore city;private final ImportStateStore queue;
+    public SelfRepairEngine(Context c,AscendantStore a,ImportStateStore q){context=c.getApplicationContext();city=a;queue=q;}
+    public String run(){StringBuilder b=new StringBuilder("ASCENDANT SELF-REPAIR\n");Runtime r=Runtime.getRuntime();long free=r.maxMemory()-(r.totalMemory()-r.freeMemory());b.append("Heap headroom: ").append(free/(1024*1024)).append(" MB\n");int cleaned=cleanCache();b.append("Transient parser files removed: ").append(cleaned).append('\n');b.append("Brain DB: ").append(check("echocore.db")).append('\n');b.append("Source DB: ").append(check("echocore_sources.db")).append('\n');b.append("City DB: ").append(check("echocore_ascendant.db")).append('\n');b.append("Phoenix queue DB: ").append(check("echocore_phoenix_queue.db")).append('\n');int pending=queue.pending().size();if(pending>0){try{DocumentImportService.start(context);b.append("Phoenix recovery: restarted with ").append(pending).append(" pending.\n");}catch(Throwable t){b.append("Phoenix recovery: queue preserved; restart request was blocked.\n");}}else b.append("Phoenix recovery: queue clear.\n");city.blackbox("SELF_REPAIR","COMPLETE","cleaned="+cleaned+" pending="+pending,queue.state());return b.toString().trim();}
+    private String check(String name){File f=context.getDatabasePath(name);if(!f.exists())return "not created yet";SQLiteDatabase d=null;try{d=SQLiteDatabase.openDatabase(f.getPath(),null,SQLiteDatabase.OPEN_READONLY);try(Cursor c=d.rawQuery("PRAGMA quick_check(1)",null)){return c.moveToFirst()?c.getString(0):"no result";}}catch(Throwable t){return "error: "+t.getClass().getSimpleName();}finally{try{if(d!=null)d.close();}catch(Throwable ignored){}}}
+    private int cleanCache(){int n=0;File[] fs=context.getCacheDir().listFiles();if(fs==null)return 0;long cutoff=System.currentTimeMillis()-20*60*1000L;for(File f:fs){String x=f.getName().toLowerCase(Locale.US);if((x.startsWith("phoenix_")||x.startsWith("echocore_pdf_")||x.endsWith(".tmp"))&&f.lastModified()<cutoff){try{if(f.delete())n++;}catch(Throwable ignored){}}}return n;}
+}
