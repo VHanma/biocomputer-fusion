@@ -34,6 +34,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="false" />
+        <service android:name=".AscendantLinkService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="remoteMessaging" />
         <service android:name=".CloudLinkService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="remoteMessaging" />
         <service android:name=".DocumentImportService" android:process=":phoenix" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="dataSync" />
     </application>
