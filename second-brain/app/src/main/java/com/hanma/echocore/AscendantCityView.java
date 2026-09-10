@@ -26,19 +26,16 @@ public class AscendantCityView extends View {
     private final List<String[]> residents=new ArrayList<>();
     private final Map<String,RectF> hit=new HashMap<>();
     private final float[] starsX=new float[92],starsY=new float[92],starsA=new float[92];
-    private Listener listener; private long epoch=System.currentTimeMillis(); private boolean interactive=true;
+    private Listener listener; private final long epoch=System.currentTimeMillis(); private boolean interactive=true;
     private int W,H;
     public AscendantCityView(Context c){super(c);init();} public AscendantCityView(Context c,AttributeSet a){super(c,a);init();}
-    private void init(){setFocusable(true);Random r=new Random(0x0A5C3NDL);for(int i=0;i<starsX.length;i++){starsX[i]=r.nextFloat();starsY[i]=r.nextFloat();starsA[i]=.18f+r.nextFloat()*.62f;}text.setTypeface(android.graphics.Typeface.create("sans",android.graphics.Typeface.BOLD));}
+    private void init(){setFocusable(true);Random r=new Random(0x0A5C3A7DL);for(int i=0;i<starsX.length;i++){starsX[i]=r.nextFloat();starsY[i]=r.nextFloat();starsA[i]=.18f+r.nextFloat()*.62f;}text.setTypeface(android.graphics.Typeface.create("sans",android.graphics.Typeface.BOLD));}
     public void setListener(Listener l){listener=l;} public void setInteractive(boolean x){interactive=x;} public void setResidents(List<String[]> x){residents.clear();if(x!=null)residents.addAll(x);invalidate();}
     @Override protected void onDraw(Canvas c){super.onDraw(c);W=getWidth();H=getHeight();if(W<=0||H<=0)return;float t=((System.currentTimeMillis()-epoch)%120000)/1000f;drawSpace(c,t);drawCity(c,t);postInvalidateOnAnimation();}
     private void drawSpace(Canvas c,float t){paint.setShader(new LinearGradient(0,0,W,H,new int[]{0xFF02050B,0xFF07101E,0xFF120B21,0xFF03040A},null,Shader.TileMode.CLAMP));c.drawRect(0,0,W,H,paint);paint.setShader(null);for(int i=0;i<starsX.length;i++){float pulse=(float)(.48+.52*Math.sin(t*.55+i*1.91));int a=(int)(255*starsA[i]*(.45+.55*pulse));paint.setColor((a<<24)|0x00BFD9FF);float x=starsX[i]*W,y=starsY[i]*H;c.drawCircle(x,y,1f+(i%5==0?1.1f:0),paint);}float cx=W*.5f,cy=H*.48f;paint.setShader(new RadialGradient(cx,cy,Math.max(W,H)*.52f,new int[]{0x3329E6C2,0x22115BC9,0x00100625},null,Shader.TileMode.CLAMP));c.drawCircle(cx,cy,Math.max(W,H)*.52f,paint);paint.setShader(null);}
     private void drawCity(Canvas c,float t){float cx=W*.5f,cy=H*.49f;float min=Math.min(W,H);float core=dp(54);float pulse=1f+(float)Math.sin(t*1.6f)*.045f;hit.clear();
-        // District rings
         for(int k=0;k<3;k++){float rr=min*(.23f+k*.105f);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(k==0?1.4f:.8f));paint.setColor(k==0?0x445CE6D4:0x263D6EAE);c.drawCircle(cx,cy,rr,paint);}paint.setStyle(Paint.Style.FILL);
-        // Orbit traces
         int n=Math.max(1,residents.size());for(int i=0;i<n;i++){String[]r=residents.get(i);float ang=(float)(-Math.PI/2 + 2*Math.PI*i/n + Math.sin(t*.05+i)*.025);int ring=i<8?0:1;float radius=min*(ring==0?.33f:.43f);float x=cx+(float)Math.cos(ang)*radius;float y=cy+(float)Math.sin(ang)*radius*.74f;drawLink(c,cx,cy,x,y,i,t);drawResident(c,r,x,y,i,t);}
-        // Core halos
         for(int i=4;i>=1;i--){float rr=core*pulse*(1f+i*.36f);int alpha=14+i*7;paint.setColor((alpha<<24)|0x005CE6D4);c.drawCircle(cx,cy,rr,paint);}paint.setShader(new RadialGradient(cx,cy,core*pulse,new int[]{0xFFF4D98A,0xFF8E63FF,0xFF102442},null,Shader.TileMode.CLAMP));c.drawCircle(cx,cy,core*pulse,paint);paint.setShader(null);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(2));paint.setColor(0xCC7EF7DF);c.drawCircle(cx,cy,core*1.14f*pulse,paint);paint.setStyle(Paint.Style.FILL);drawCentered(c,"Ω",cx,cy+dp(11),dp(30),0xFFFFFFFF);drawCentered(c,"ASCENDANT CORE",cx,cy+core+dp(24),dp(9),0xCCF4D98A);hit.put("__CORE__",new RectF(cx-core*1.4f,cy-core*1.4f,cx+core*1.4f,cy+core*1.4f));
         drawCentered(c,"THE SANCTUM",cx,dp(38),dp(14),0xFFF5F7FF);drawCentered(c,"CITY OF MINDS",cx,dp(56),dp(8),0xBBAAC4FF);
     }
