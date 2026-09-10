@@ -1,7 +1,7 @@
 name: Build EchoCore Second Brain APK
 on:
   push:
-    branches: [ "second-brain-build" ]
+    branches: [ "second-brain-build", "ascendant-build" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -29,6 +29,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: EchoCore-Second-Brain-v1
+          name: EchoCore-Ascendant-v11
           path: second-brain/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
