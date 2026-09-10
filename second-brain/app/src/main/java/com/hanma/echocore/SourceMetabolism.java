@@ -3,7 +3,6 @@ package com.hanma.echocore;
 import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
-import java.util.Locale;
 
 /** Converts newly imported chunks into provenance, semantic index, hierarchy and candidate claims. */
 public class SourceMetabolism {
@@ -11,17 +10,18 @@ public class SourceMetabolism {
     public SourceMetabolism(AscendantStore a){asc=a;claims=new ClaimGraphEngine(a);}
 
     public int metabolize(SourceCatalog catalog,BrainDatabase brain,long sourceId,String sourceName,String method){
-        int indexed=0;long root=hierarchyRoot(sourceId,sourceName);SQLiteDatabase sdb=catalog.getReadableDatabase();
+        int indexed=0,lastPart=0;long root=hierarchyRoot(sourceId,sourceName);SQLiteDatabase sdb=catalog.getReadableDatabase();
         try(Cursor c=sdb.rawQuery("SELECT part,text FROM chunks WHERE source_id=? ORDER BY part",new String[]{String.valueOf(sourceId)})){
             while(c.moveToNext()){
-                int part=c.getInt(0);String text=c.getString(1);long mem=findMemory(brain,text);
+                int part=c.getInt(0);lastPart=part;String text=c.getString(1);long mem=findMemory(brain,text);
                 try{asc.indexText(sourceId,part,mem,text);}catch(Throwable ignored){}
                 if(mem>0)try{asc.evidence(mem,"SOURCE",sourceId,part,0,method,8);}catch(Throwable ignored){}
-                if((part-1)%12==0)hierarchySection(sourceId,root,part,Math.min(part+11,part),"Passages "+part+"–"+(part+11));
+                if((part-1)%12==0)hierarchySection(sourceId,root,part,part+11,"Passages "+part+"–"+(part+11));
                 try{claims.indexChunk(sourceId,part,text);}catch(Throwable ignored){}
                 indexed++;
             }
         }
+        if(root>0&&lastPart>0){ContentValues v=new ContentValues();v.put("part_end",lastPart);asc.getWritableDatabase().update("hierarchy_nodes",v,"id=?",new String[]{String.valueOf(root)});asc.getWritableDatabase().execSQL("UPDATE hierarchy_nodes SET part_end=? WHERE source_id=? AND node_type='SECTION' AND part_start<=? AND part_end>?",new Object[]{lastPart,sourceId,lastPart,lastPart});}
         asc.blackbox("METABOLISM","SOURCE_INDEXED",sourceName+" · "+indexed+" parts","");return indexed;
     }
     private long findMemory(BrainDatabase brain,String text){try(Cursor c=brain.getReadableDatabase().rawQuery("SELECT id FROM memories WHERE type='KNOWLEDGE' AND text=? ORDER BY id DESC LIMIT 1",new String[]{text})){return c.moveToFirst()?c.getLong(0):0;}catch(Throwable t){return 0;}}
