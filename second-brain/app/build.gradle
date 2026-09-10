@@ -7,11 +7,11 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.hanma.echocore.neural.omega.nexus.docflow'
+        applicationId 'com.hanma.echocore.neural.omega.ascendant'
         minSdk 26
         targetSdk 35
-        versionCode 10
-        versionName '10.0.0'
+        versionCode 11
+        versionName '11.0.0'
     }
 
     buildTypes {
@@ -24,4 +24,5 @@ android {
 
 dependencies {
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
 }
