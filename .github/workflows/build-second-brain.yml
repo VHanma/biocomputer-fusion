@@ -1,4 +1,4 @@
-name: Build EchoCore Civilization Vault APK
+name: Build EchoCore Continuum v15 APK
 on:
   push:
     branches: [ "second-brain-build", "ascendant-build" ]
@@ -29,7 +29,7 @@ jobs:
       - name: Verify Civilization Vault corpus
         run: |
           python3 - <<'PY'
-          import sqlite3, pathlib, sys
+          import sqlite3, pathlib
           p=pathlib.Path('app/src/main/assets/civilization_vault.db')
           if not p.exists() or p.stat().st_size < 65536:
               raise SystemExit('Civilization Vault database missing or too small')
@@ -44,16 +44,22 @@ jobs:
               raise SystemExit('Civilization Vault verification floor not met')
           c.close()
           PY
-      - name: Stamp v14 City Gate
+      - name: Stamp Continuum City Gate
         run: |
-          sed -i 's/VERSION="13.0.0"/VERSION="14.0.0"/' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
-          sed -i 's/Living Archive City Gate/Civilization Vault City Gate/g' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
-          sed -i 's/EchoCore Ω Living Archive/EchoCore Ω Civilization Vault/g' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
+          sed -i -E 's/VERSION="[0-9]+\.[0-9]+\.[0-9]+"/VERSION="15.0.0"/' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
+          sed -i 's/Living Archive City Gate/Continuum City Gate/g' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
+          sed -i 's/Civilization Vault City Gate/Continuum City Gate/g' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
+          sed -i 's/EchoCore Ω Living Archive/EchoCore Ω Continuum/g' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
+          sed -i 's/EchoCore Ω Civilization Vault/EchoCore Ω Continuum/g' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
+      - name: Verify Continuum classes
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q 'civilization_vault.db'
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: EchoCore-Civilization-Vault-v14
+          name: EchoCore-Continuum-v15
           path: second-brain/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
