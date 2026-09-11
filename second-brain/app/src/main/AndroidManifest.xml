@@ -21,6 +21,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".FrontierMindActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".ContinuumRoomActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".AscendantActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".ResidentRoomActivity" android:screenOrientation="portrait" android:exported="false" />
