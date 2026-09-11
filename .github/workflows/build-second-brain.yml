@@ -1,4 +1,4 @@
-name: Build EchoCore Second Brain APK
+name: Build EchoCore Civilization Vault APK
 on:
   push:
     branches: [ "second-brain-build", "ascendant-build" ]
@@ -24,11 +24,36 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Build Civilization Vault corpus
+        run: python3 tools/build_civilization_vault.py
+      - name: Verify Civilization Vault corpus
+        run: |
+          python3 - <<'PY'
+          import sqlite3, pathlib, sys
+          p=pathlib.Path('app/src/main/assets/civilization_vault.db')
+          if not p.exists() or p.stat().st_size < 65536:
+              raise SystemExit('Civilization Vault database missing or too small')
+          c=sqlite3.connect(p)
+          sources=c.execute('select count(*) from sources').fetchone()[0]
+          passages=c.execute('select count(*) from passages').fetchone()[0]
+          full=c.execute("select count(*) from sources where source_type='PUBLIC_DOMAIN_FULLTEXT'").fetchone()[0]
+          maps=c.execute("select count(*) from sources where source_type='KNOWLEDGE_MAP'").fetchone()[0]
+          chars=c.execute('select coalesce(sum(char_count),0) from passages').fetchone()[0]
+          print({'bytes':p.stat().st_size,'sources':sources,'passages':passages,'full_text_books':full,'knowledge_maps':maps,'chars':chars})
+          if sources < 35 or passages < 100 or full < 12 or maps < 15 or chars < 500000:
+              raise SystemExit('Civilization Vault verification floor not met')
+          c.close()
+          PY
+      - name: Stamp v14 City Gate
+        run: |
+          sed -i 's/VERSION="13.0.0"/VERSION="14.0.0"/' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
+          sed -i 's/Living Archive City Gate/Civilization Vault City Gate/g' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
+          sed -i 's/EchoCore Ω Living Archive/EchoCore Ω Civilization Vault/g' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: EchoCore-Ascendant-v11
+          name: EchoCore-Civilization-Vault-v14
           path: second-brain/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
