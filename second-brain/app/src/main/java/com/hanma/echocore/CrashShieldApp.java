@@ -1,10 +1,13 @@
 package com.hanma.echocore;
 
 import android.app.Application;
+import android.content.Context;
 
 public class CrashShieldApp extends Application {
+    private static volatile CrashShieldApp instance;
+    public static Context context(){return instance==null?null:instance.getApplicationContext();}
     @Override public void onCreate() {
-        super.onCreate();
+        super.onCreate();instance=this;
         final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             try {
