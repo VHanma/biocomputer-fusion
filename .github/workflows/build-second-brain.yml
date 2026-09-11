@@ -51,30 +51,9 @@ jobs:
           sed -i 's/EchoCore Ω Continuum/EchoCore Ω Deep Ingest/g' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
           sed -i 's/DOCFLOW v10 · persistent resumable ingestion/SOURCE CORTEX v16 · verified deep ingestion/' app/src/main/java/com/hanma/echocore/SourceActivity.java
           sed -i 's/NEXUS HUB/CITY HUB/' app/src/main/java/com/hanma/echocore/SourceActivity.java
-          sed -i 's/safeStart(CloudLinkActivity.class)/safeStart(SanctumActivity.class)/' app/src/main/java/com/hanma/echocore/SourceActivity.java
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p=Path('app/src/main/java/com/hanma/echocore/SourceActivity.java')
-          s=p.read_text()
-          old=re.search(r'    private android\.view\.View sourceCard\(String\[\] s\)\{.*?\n\n    private void openOriginal',s,re.S)
-          if not old:
-              raise SystemExit('sourceCard method not found')
-          new='''    private android.view.View sourceCard(String[] s){
-              long id=Long.parseLong(s[0]);String name=s[1],mime=s[2],uri=s[3];int chars=Integer.parseInt(s[5]),chunks=Integer.parseInt(s[6]);String state=s.length>9?s[9]:(chunks>0?"READY":"INCOMPLETE"),err=s.length>10?s[10]:"";
-              LinearLayout c=card();c.addView(text(name,14,TEXT,true));int stateColor="READY".equals(state)?ACCENT2:("FAILED".equals(state)?DANGER:("INGESTING".equals(state)?WARM:MUTED));c.addView(text(state+" · "+mime+" · "+chars+" chars · "+chunks+" chunks",10,stateColor,true),lp(-1,-2,0,3,0,3));if(!err.isEmpty())c.addView(text(err,9,DANGER,false),lp(-1,-2,0,2,0,6));
-              LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);
-              if(chunks>0){Button sum=button("SUMMARIZE",PANEL2,ACCENT2);sum.setOnClickListener(v->summarizeSource(id,name));row.addView(sum,new LinearLayout.LayoutParams(0,dp(41),1));}
-              else if(uri!=null&&!uri.isEmpty()){Button retry=button("RECOVER",PANEL2,WARM);retry.setOnClickListener(v->{catalog.deleteSource(id);ArrayList<Uri> one=new ArrayList<>();one.add(Uri.parse(uri));queue(one);});row.addView(retry,new LinearLayout.LayoutParams(0,dp(41),1));}
-              if(uri!=null&&!uri.isEmpty()){Button open=button("OPEN",PANEL2,ACCENT);open.setOnClickListener(v->openOriginal(uri,mime));LinearLayout.LayoutParams q=new LinearLayout.LayoutParams(0,dp(41),1);q.setMargins(dp(6),0,0,0);row.addView(open,q);}Button del=button("REMOVE",0xFF28161C,DANGER);del.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Remove source catalog?").setMessage("Neural memories already learned from it stay in the brain.").setNegativeButton("Keep",null).setPositiveButton("Remove",(d,w)->{catalog.deleteSource(id);render();}).show());LinearLayout.LayoutParams q=new LinearLayout.LayoutParams(0,dp(41),1);q.setMargins(dp(6),0,0,0);row.addView(del,q);c.addView(row);return c;}
-
-    private void openOriginal'''
-          s=s[:old.start()]+new+s[old.end():]
-          p.write_text(s)
-          PY
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
-      - name: Verify Deep Ingest classes
+      - name: Verify Deep Ingest APK
         run: |
           test -f app/build/outputs/apk/debug/app-debug.apk
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q 'civilization_vault.db'
