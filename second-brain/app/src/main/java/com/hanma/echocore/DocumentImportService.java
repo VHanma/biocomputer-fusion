@@ -17,7 +17,7 @@ import java.util.Locale;
 /** Phoenix is a restartable fault domain. Manifest runs this service in :phoenix. */
 public class DocumentImportService extends Service {
     public static final String ACTION_RUN="com.hanma.echocore.PHOENIX_RUN",ACTION_CANCEL="com.hanma.echocore.PHOENIX_CANCEL";
-    private static final String CHANNEL="echocore_phoenix"; private static final int NOTIFY_ID=18435;
+    private static final String CHANNEL="echocore_phoenix";private static final int NOTIFY_ID=18435;
     private ImportStateStore state;private DiagnosticsStore diag;private AscendantStore asc;private volatile boolean running;private Thread worker;
     public static void start(Context c){Intent i=new Intent(c,DocumentImportService.class).setAction(ACTION_RUN);if(Build.VERSION.SDK_INT>=26)c.startForegroundService(i);else c.startService(i);}
     public static void cancel(Context c){Intent i=new Intent(c,DocumentImportService.class).setAction(ACTION_CANCEL);if(Build.VERSION.SDK_INT>=26)c.startForegroundService(i);else c.startService(i);}
@@ -31,30 +31,29 @@ public class DocumentImportService extends Service {
                 if(state.cancelRequested()){state.cancelQueue();asc.blackbox("PHOENIX","QUEUE_CANCELLED","User cancelled queue",state.state());break;}
                 String uriText=state.peek();if(uriText.isEmpty())break;Uri uri=Uri.parse(uriText);String name=safeName(uri);state.markRunning(uriText,name);update("Fingerprinting · "+name);
                 boolean success=false;String line="";Throwable last=null;String fingerprint="";String parser="STREAM";AscendantStore civic=asc;SourceVault vault=new SourceVault(this,civic);
-                try{
-                    fingerprint=vault.fingerprint(uri);long existing=vault.existing(fingerprint);if(existing>0){success=true;line="↺ "+name+" · already indexed as source "+existing;state.completeCurrent(uriText,true,line);asc.blackbox("VAULT","DUPLICATE",line,state.state());continue;}
-                }catch(Throwable t){diag.error("phoenix_fingerprint",t);asc.blackbox("VAULT","FINGERPRINT_FAIL",safe(t),state.state());}
-                String kind=kind(uri,name);parser="PDF".equals(kind)?"PHOENIX_PDF":"IMAGE".equals(kind)?"VISION_OCR":"STREAM";
-                boolean quarantined=!fingerprint.isEmpty()&&vault.quarantined(fingerprint,parser);if(quarantined)asc.blackbox("PHOENIX","QUARANTINE_ROUTE",name+" · "+parser,state.state());
+                try{fingerprint=vault.fingerprint(uri);long existing=vault.existing(fingerprint);if(existing>0){success=true;line="↺ "+name+" · already indexed as source "+existing;state.completeCurrent(uriText,true,line);asc.blackbox("VAULT","DUPLICATE",line,state.state());signal("SOURCE_DUPLICATE",line,4);continue;}}catch(Throwable t){diag.error("phoenix_fingerprint",t);asc.blackbox("VAULT","FINGERPRINT_FAIL",safe(t),state.state());}
+                String kind=kind(uri,name);parser="PDF".equals(kind)?"PHOENIX_PDF":"IMAGE".equals(kind)?"VISION_OCR":"STREAM";boolean quarantined=!fingerprint.isEmpty()&&vault.quarantined(fingerprint,parser);if(quarantined)asc.blackbox("PHOENIX","QUARANTINE_ROUTE",name+" · "+parser,state.state());
                 for(int attempt=1;attempt<=2&&!success;attempt++){
                     BrainDatabase brain=null;SourceCatalog catalog=null;
                     try{
-                        brain=new BrainDatabase(this);catalog=new SourceCatalog(this);DocumentImporter.Result r;
-                        if("PDF".equals(kind)){update((quarantined?"Safe OCR route · ":"Page route · ")+name);r=new PhoenixPdfImporter(this,brain,catalog,civic,state).ingest(uri,fingerprint,quarantined);}
-                        else if("IMAGE".equals(kind)){update("Vision OCR · "+name);r=new PhoenixImageImporter(this,brain,catalog,civic).ingest(uri);}
-                        else{update("Streaming · "+name);r=new DocumentImporter(this,brain,catalog).ingest(uri);new SourceMetabolism(civic).metabolize(catalog,brain,r.sourceId,r.name,"PHOENIX_STREAM");}
-                        success=true;line=(r.partial?"△ ":"✓ ")+r.name+" · "+r.chars+" chars · "+r.chunks+" chunks"+(r.partial?" · partial":"");if(!fingerprint.isEmpty()){vault.record(fingerprint,r.name,r.sourceId,r.sizeBytes);vault.success(fingerprint,parser);}diag.event(r.partial?"IMPORT_PARTIAL":"IMPORT_OK",trim(line,220));civic.blackbox("PHOENIX","IMPORT_DONE",line,state.state());
-                    }catch(OutOfMemoryError oom){last=oom;diag.event("PHOENIX_OOM","Isolated heap exhaustion in "+trim(name,100));civic.blackbox("PHOENIX","OOM",name+" · checkpoint retained",state.state());if(!fingerprint.isEmpty())vault.failure(fingerprint,kind,parser,oom);line="△ "+name+" · Phoenix heap exhausted; checkpoint retained";break;}
+                        brain=new BrainDatabase(this);catalog=new SourceCatalog(this);DocumentImporter.Result r;String method;
+                        if("PDF".equals(kind)){update((quarantined?"Safe page route · ":"Page route · ")+name);r=new PhoenixPdfImporter(this,brain,catalog,civic,state).ingest(uri,fingerprint,quarantined);method="PHOENIX_PDF_OCR";}
+                        else if("IMAGE".equals(kind)){update("Vision OCR · "+name);r=new PhoenixImageImporter(this,brain,catalog,civic).ingest(uri);method="VISION_OCR";}
+                        else{update("Streaming · "+name);r=new DocumentImporter(this,brain,catalog).ingest(uri);method="PHOENIX_STREAM";}
+                        update("Refining knowledge · "+name);int refined=0;try{refined=new SourceMetabolism(civic).metabolize(catalog,brain,r.sourceId,r.name,method);}catch(Throwable refine){diag.error("metabolism:"+trim(name,70),refine);civic.blackbox("METABOLISM","REFINE_ERROR",name+" · "+safe(refine),state.state());}
+                        success=true;line=(r.partial?"△ ":"✓ ")+r.name+" · "+r.chars+" chars · "+r.chunks+" chunks · "+refined+" refined"+(r.partial?" · partial":"");if(!fingerprint.isEmpty()){vault.record(fingerprint,r.name,r.sourceId,r.sizeBytes);vault.success(fingerprint,parser);}diag.event(r.partial?"IMPORT_PARTIAL":"IMPORT_OK",trim(line,220));civic.blackbox("PHOENIX","IMPORT_DONE",line,state.state());signal("SOURCE_IMPORTED",line,8);
+                    }catch(OutOfMemoryError oom){last=oom;diag.event("PHOENIX_OOM","Isolated heap exhaustion in "+trim(name,100));civic.blackbox("PHOENIX","OOM",name+" · checkpoint retained",state.state());if(!fingerprint.isEmpty())vault.failure(fingerprint,kind,parser,oom);line="△ "+name+" · Phoenix heap exhausted; checkpoint retained";signal("SOURCE_IMPORT_FAILED",line,9);break;}
                     catch(Throwable t){if(t instanceof ThreadDeath)throw (ThreadDeath)t;if(t instanceof InterruptedException){Thread.currentThread().interrupt();break;}last=t;diag.error("phoenix:"+trim(name,70)+":attempt"+attempt,t);civic.blackbox("PHOENIX","IMPORT_ERROR",name+" · "+safe(t),state.state());if(!fingerprint.isEmpty())vault.failure(fingerprint,kind,parser,t);if(attempt<2&&!vault.quarantined(fingerprint,parser)){state.progress("Retrying at last checkpoint · "+name);sleepQuiet(800);}else break;}
                     finally{try{if(catalog!=null)catalog.close();}catch(Throwable ignored){}try{if(brain!=null)brain.close();}catch(Throwable ignored){}}
                 }
                 if(Thread.currentThread().isInterrupted()){if(state.cancelRequested())state.cancelQueue();break;}
-                if(!success&&line.isEmpty())line="✕ "+name+" · "+safe(last);state.completeCurrent(uriText,success,line);update(success?"Committed · "+name:"Quarantined/skipped · "+name);pressureRelief();
+                if(!success&&line.isEmpty())line="✕ "+name+" · "+safe(last);if(!success)signal("SOURCE_IMPORT_FAILED",line,8);state.completeCurrent(uriText,success,line);update(success?"Committed · "+name:"Quarantined/skipped · "+name);pressureRelief();
             }
-        }catch(Throwable t){diag.error("phoenix_loop",t);try{asc.blackbox("PHOENIX","LOOP_ERROR",safe(t),state.state());}catch(Throwable ignored){}state.setError("Phoenix: "+safe(t));}
+        }catch(Throwable t){diag.error("phoenix_loop",t);try{asc.blackbox("PHOENIX","LOOP_ERROR",safe(t),state.state());}catch(Throwable ignored){}state.setError("Phoenix: "+safe(t));signal("PHOENIX_ERROR",safe(t),9);}
         finally{running=false;if(state.pending().isEmpty()&&!"CANCELLED".equals(state.state()))state.progress("Phoenix queue complete");stopForeground(false);stopSelf();}
     }
 
+    private void signal(String kind,String detail,int salience){try(LivingMindStore life=new LivingMindStore(this)){life.signal(kind,detail,salience);}catch(Throwable ignored){}}
     private String kind(Uri uri,String name){String mime=getContentResolver().getType(uri);String m=mime==null?"":mime.toLowerCase(Locale.US),n=name==null?"":name.toLowerCase(Locale.US);if(m.contains("pdf")||n.endsWith(".pdf"))return "PDF";if(m.startsWith("image/")||n.matches(".*\\.(png|jpg|jpeg|webp|bmp|heic|heif|gif)$"))return "IMAGE";if(m.startsWith("audio/")||m.startsWith("video/"))return "MEDIA";return "DOCUMENT";}
     private void pressureRelief(){try{System.gc();Thread.sleep(300);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
     private void sleepQuiet(long ms){try{Thread.sleep(ms);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
