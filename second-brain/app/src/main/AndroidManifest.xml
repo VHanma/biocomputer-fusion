@@ -6,12 +6,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:name=".CrashShieldApp"
         android:allowBackup="true"
         android:fullBackupContent="true"
         android:icon="@drawable/ic_launcher"
-        android:label="EchoCore Ω Deep Ingest v17"
+        android:label="EchoCore Ω Living Minds"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
         android:theme="@style/AppTheme">
@@ -23,6 +24,8 @@
         </activity>
         <activity android:name=".FrontierMindActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".ContinuumRoomActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".ResidentInboxActivity" android:screenOrientation="portrait" android:exported="false" />
+        <activity android:name=".EvolutionLabActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".AscendantActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".ResidentRoomActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".CouncilChamberActivity" android:screenOrientation="portrait" android:exported="false" />
@@ -41,5 +44,9 @@
         <service android:name=".AscendantLinkService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="remoteMessaging" />
         <service android:name=".CloudLinkService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="remoteMessaging" />
         <service android:name=".DocumentImportService" android:process=":phoenix" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="dataSync" />
+        <service android:name=".LivingPulseJobService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
+        <receiver android:name=".LivingBootReceiver" android:enabled="true" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+        </receiver>
     </application>
 </manifest>
