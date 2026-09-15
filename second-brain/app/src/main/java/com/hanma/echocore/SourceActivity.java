@@ -28,11 +28,11 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Nexus v10 Source Cortex. Imports live in DocumentImportService, not this Activity. */
+/** v19 Source Cortex. Phoenix extracts locally; refined knowledge is archived to the cloud. */
 public class SourceActivity extends Activity {
     private static final int BG=0xFF080A0F,PANEL=0xFF111722,PANEL2=0xFF182130,TEXT=0xFFF4F7FF,MUTED=0xFF98A4BA,ACCENT=0xFF7C9CFF,ACCENT2=0xFF56E0C5,WARM=0xFFFFB86B,DANGER=0xFFFF7A90;
     private static final int REQ_INGEST=810;
-    private BrainDatabase brain;private SourceCatalog catalog;private DiagnosticsStore diag;private ImportStateStore importState;
+    private BrainDatabase brain;private SourceCatalog catalog;private DiagnosticsStore diag;private ImportStateStore importState;private CloudMindClient cloud;
     private final ExecutorService io=Executors.newSingleThreadExecutor();
     private final Handler ui=new Handler(Looper.getMainLooper());
     private LinearLayout body;
@@ -40,29 +40,30 @@ public class SourceActivity extends Activity {
 
     @Override protected void onCreate(Bundle s){
         super.onCreate(s);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
-        brain=new BrainDatabase(this);catalog=new SourceCatalog(this);diag=new DiagnosticsStore(this);importState=new ImportStateStore(this);
+        brain=new BrainDatabase(this);catalog=new SourceCatalog(this);diag=new DiagnosticsStore(this);importState=new ImportStateStore(this);cloud=new CloudMindClient(this);
         setContentView(shell());handleIncoming(getIntent());
         if(!importState.pending().isEmpty())try{DocumentImportService.start(this);}catch(Throwable t){diag.error("resume_docflow",t);}
+        CloudArchiveJobService.schedule(this);
     }
-    @Override protected void onResume(){super.onResume();ui.removeCallbacks(ticker);ui.post(ticker);}
+    @Override protected void onResume(){super.onResume();CloudArchiveJobService.schedule(this);ui.removeCallbacks(ticker);ui.post(ticker);}
     @Override protected void onPause(){ui.removeCallbacks(ticker);super.onPause();}
     @Override protected void onDestroy(){io.shutdownNow();try{catalog.close();}catch(Throwable ignored){}try{brain.close();}catch(Throwable ignored){}super.onDestroy();}
 
     private LinearLayout shell(){
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(BG);
         LinearLayout head=new LinearLayout(this);head.setOrientation(LinearLayout.HORIZONTAL);head.setGravity(Gravity.CENTER_VERTICAL);head.setPadding(dp(15),dp(12),dp(15),dp(10));
-        LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.addView(text("ECHOCORE · SOURCE CORTEX",20,TEXT,true));titles.addView(text("DOCFLOW v10 · persistent resumable ingestion",10,ACCENT2,false));head.addView(titles,new LinearLayout.LayoutParams(0,-2,1f));
+        LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.addView(text("ECHOCORE · SOURCE CORTEX",20,TEXT,true));titles.addView(text("SOURCE CORTEX v19 · cloud-metabolized deep ingestion",10,ACCENT2,false));head.addView(titles,new LinearLayout.LayoutParams(0,-2,1f));
         Button hub=button("NEXUS HUB",PANEL2,ACCENT);hub.setOnClickListener(v->safeStart(CloudLinkActivity.class));head.addView(hub,lp(dp(108),dp(42),8,0,0,0));root.addView(head);
         ScrollView sc=new ScrollView(this);body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(dp(14),dp(4),dp(14),dp(28));sc.addView(body);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1f));return root;
     }
 
     private void render(){
         if(body==null||isFinishing())return;body.removeAllViews();
-        body.addView(section("DOCUMENT ENGINE","The import queue now survives Source Cortex screen destruction. Files run sequentially in a foreground engine and resume from the persistent queue."));
-        LinearLayout stats=new LinearLayout(this);stats.setOrientation(LinearLayout.HORIZONTAL);stats.addView(stat(String.valueOf(catalog.countSources()),"SOURCES"));stats.addView(stat(String.valueOf(brain.countType("KNOWLEDGE")),"KNOWLEDGE"));stats.addView(stat(String.valueOf(brain.count()),"BRAIN NODES"));body.addView(stats,lp(-1,-2,0,0,0,10));
+        body.addView(section("DOCUMENT ENGINE","Phoenix extracts and refines each file locally. After the cloud acknowledges the complete refined source, bulky local document bodies are released while the source card and recovery link stay on your phone."));
+        LinearLayout stats=new LinearLayout(this);stats.setOrientation(LinearLayout.HORIZONTAL);stats.addView(stat(String.valueOf(catalog.countSources()),"SOURCES"));stats.addView(stat(String.valueOf(brain.countType("KNOWLEDGE")),"LOCAL KNOWLEDGE"));stats.addView(stat(String.valueOf(brain.count()),"LOCAL NODES"));body.addView(stats,lp(-1,-2,0,0,0,10));
 
         String st=importState.state();boolean active="RUNNING".equals(st)||"QUEUED".equals(st);int pending=importState.pending().size();
-        LinearLayout status=card();status.addView(text("DOCFLOW · "+st,14,active?WARM:ACCENT2,true));
+        LinearLayout status=card();status.addView(text("PHOENIX · "+st,14,active?WARM:ACCENT2,true));
         String detail=importState.status()+"\nCompleted "+importState.done()+" · Failed "+importState.failed()+" · Pending "+pending;
         if(!importState.currentName().isEmpty())detail+="\nCurrent: "+importState.currentName();
         status.addView(text(detail,10,MUTED,false),lp(-1,-2,0,5,0,7));
@@ -70,16 +71,16 @@ public class SourceActivity extends Activity {
         body.addView(status,lp(-1,-2,0,0,0,8));
 
         Button ingest=button("＋ ADD DOCS / FILES",ACCENT,BG);ingest.setOnClickListener(v->beginIngest());body.addView(ingest,lp(-1,dp(54),0,0,0,6));
-        if(pending>0&&!"RUNNING".equals(st)){Button resume=button("RESUME "+pending+" PENDING",PANEL2,ACCENT2);resume.setOnClickListener(v->{try{DocumentImportService.start(this);toast("DocFlow resumed");}catch(Throwable t){diag.error("resume_docflow",t);}});body.addView(resume,lp(-1,dp(46),0,0,0,7));}
+        if(pending>0&&!"RUNNING".equals(st)){Button resume=button("RESUME "+pending+" PENDING",PANEL2,ACCENT2);resume.setOnClickListener(v->{try{DocumentImportService.start(this);toast("Phoenix resumed");}catch(Throwable t){diag.error("resume_docflow",t);}});body.addView(resume,lp(-1,dp(46),0,0,0,7));}
         body.addView(text("PDF · DOCX · PPTX · XLSX · ODT/ODS/ODP · EPUB · ZIP text collections · TXT/MD · CSV · JSON · HTML/XML · RTF · code/text. You can leave this screen while imports continue.",10,MUTED,false),lp(-1,-2,0,0,0,12));
 
-        String report=importState.report();if(report!=null&&!report.trim().isEmpty()){Button rep=button("LAST IMPORT REPORT",PANEL2,TEXT);rep.setOnClickListener(v->dialog("DocFlow report",importState.report()));body.addView(rep,lp(-1,dp(44),0,0,0,12));}
+        String report=importState.report();if(report!=null&&!report.trim().isEmpty()){Button rep=button("LAST IMPORT REPORT",PANEL2,TEXT);rep.setOnClickListener(v->dialog("Phoenix report",importState.report()));body.addView(rep,lp(-1,dp(44),0,0,0,12));}
 
-        body.addView(section("ASK THE SOURCES","Search imported text or build a bounded summary without loading the whole source into memory."));
-        EditText ask=edit("Topic, phrase, or: summarize <filename>");body.addView(ask,lp(-1,dp(52),0,0,0,7));
-        Button search=button("SEARCH / SUMMARIZE",PANEL2,ACCENT2);search.setOnClickListener(v->answerSource(ask.getText().toString()));body.addView(search,lp(-1,dp(46),0,0,0,12));
+        body.addView(section("ASK THE SOURCES","Cloud-archived sources are answered through Hermes' full mind, not by dumping matching chunks."));
+        EditText ask=edit("Topic, question, or: summarize <filename>");body.addView(ask,lp(-1,dp(52),0,0,0,7));
+        Button search=button("ASK / SEARCH / SUMMARIZE",PANEL2,ACCENT2);search.setOnClickListener(v->answerSource(ask.getText().toString()));body.addView(search,lp(-1,dp(46),0,0,0,12));
 
-        body.addView(section("RECENT SOURCES","Partial imports remain searchable. The original file stays linked when Android grants persistent access."));
+        body.addView(section("RECENT SOURCES","CLOUD READY means the refined knowledge is safely stored off-device; original file links remain available when Android grants persistent access."));
         List<String[]> sources=catalog.recentSources(20);if(sources.isEmpty())body.addView(cardText("No sources yet."));for(String[] s:sources)body.addView(sourceCard(s),lp(-1,-2,0,0,0,8));
     }
 
@@ -90,16 +91,41 @@ public class SourceActivity extends Activity {
         importState.enqueue(good);try{DocumentImportService.start(this);diag.event("DOCFLOW_QUEUE","Queued "+good.size()+" files");toast("Queued "+good.size()+" file"+(good.size()==1?"":"s"));}catch(Throwable t){diag.error("start_docflow",t);toast("Queue saved. Reopen Source Cortex to resume.");}render();
     }
 
-    private void handleIncoming(Intent intent){if(intent==null)return;String a=intent.getAction();if(Intent.ACTION_SEND.equals(a)){Uri u=intent.getParcelableExtra(Intent.EXTRA_STREAM);if(u!=null){ArrayList<Uri>x=new ArrayList<>();x.add(u);queue(x);return;}CharSequence t=intent.getCharSequenceExtra(Intent.EXTRA_TEXT);if(t!=null&&!t.toString().trim().isEmpty()){brain.addMemoryRich(t.toString(),"REFERENCE","shared",6,0,7,6,false);toast("Shared text saved to the brain.");}}else if(Intent.ACTION_SEND_MULTIPLE.equals(a)){ArrayList<Uri> u=intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);if(u!=null)queue(u);}}
+    private void handleIncoming(Intent intent){if(intent==null)return;String a=intent.getAction();if(Intent.ACTION_SEND.equals(a)){Uri u=intent.getParcelableExtra(Intent.EXTRA_STREAM);if(u!=null){ArrayList<Uri>x=new ArrayList<>();x.add(u);queue(x);return;}CharSequence t=intent.getCharSequenceExtra(Intent.EXTRA_TEXT);if(t!=null&&!t.toString().trim().isEmpty()){brain.addMemoryRich(t.toString(),"REFERENCE","shared",6,0,7,6,false);toast("Shared text saved locally.");}}else if(Intent.ACTION_SEND_MULTIPLE.equals(a)){ArrayList<Uri> u=intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);if(u!=null)queue(u);}}
     @Override protected void onNewIntent(Intent i){super.onNewIntent(i);setIntent(i);handleIncoming(i);}
     @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){super.onActivityResult(requestCode,resultCode,data);if(requestCode!=REQ_INGEST||resultCode!=RESULT_OK||data==null)return;ArrayList<Uri> uris=new ArrayList<>();ClipData c=data.getClipData();if(c!=null){for(int i=0;i<c.getItemCount();i++){Uri u=c.getItemAt(i).getUri();if(u!=null)uris.add(u);}}else if(data.getData()!=null)uris.add(data.getData());queue(uris);}
 
-    private void answerSource(String q){q=q==null?"":q.trim();if(q.isEmpty()){toast("Give Source Cortex a topic or filename.");return;}String lower=q.toLowerCase(Locale.US);if(lower.startsWith("summarize ")){String[] s=catalog.findSource(q.substring(10).trim());if(s==null){dialog("Source not found","Try part of the filename.");return;}summarizeSource(Long.parseLong(s[0]),s[1]);return;}List<String[]> hits=catalog.searchChunks(q,10);if(hits.isEmpty()){dialog("Source search","No direct source-text match for “"+q+"”.");return;}StringBuilder b=new StringBuilder();int i=1;for(String[] h:hits)b.append(i++).append(". ").append(h[0]).append(" · part ").append(h[1]).append("\n").append(snippet(h[2],q,360)).append("\n\n");dialog("Source search · "+hits.size()+" matches",b.toString().trim());}
+    private void answerSource(String q){
+        q=q==null?"":q.trim();if(q.isEmpty()){toast("Give Source Cortex a topic, question, or filename.");return;}
+        String lower=q.toLowerCase(Locale.US);
+        if(lower.startsWith("summarize ")){
+            String[] s=catalog.findSource(q.substring(10).trim());if(s==null){cloudAsk("Search my uploaded sources for a source matching ‘"+q.substring(10).trim()+"’ and summarize it if found.","Source summary");return;}
+            summarizeSource(Long.parseLong(s[0]),s[1]);return;
+        }
+        List<String[]> hits=catalog.searchChunks(q,10);
+        if(hits.isEmpty()){cloudAsk("Search my uploaded source library for this question and answer from the relevant source material. Integrate it naturally and name the source only when useful: "+q,"Source answer");return;}
+        StringBuilder b=new StringBuilder();int i=1;for(String[] h:hits)b.append(i++).append(". ").append(h[0]).append(" · part ").append(h[1]).append("\n").append(snippet(h[2],q,360)).append("\n\n");dialog("Local source search · "+hits.size()+" matches",b.toString().trim());
+    }
 
-    private void summarizeSource(long id,String name){toast("Building bounded summary…");io.execute(()->{try{int total=catalog.countChunks(id);List<String> chunks=catalog.sampleChunks(id,400);String result=chunks.isEmpty()?"This source has no extracted text.":summarize(chunks,total);runUi(()->dialog("Summary · "+name,result));}catch(Throwable t){diag.error("source_summary",t);runUi(()->dialog("Summary error",safe(t)));}});}
+    private void summarizeSource(long id,String name){
+        String[] row=catalog.sourceById(id);boolean cloudReady=row!=null&&row.length>11&&"1".equals(row[11]);
+        if(cloudReady){cloudAsk("Using the uploaded source named ‘"+name+"’, give me an intelligent summary of its major ideas, structure, important claims, and useful connections. Do not dump chunks or internal retrieval metadata.","Summary · "+name);return;}
+        toast("Building bounded local summary…");io.execute(()->{try{int total=catalog.countChunks(id);List<String> chunks=catalog.sampleChunks(id,400);if(chunks.isEmpty()){runUi(()->cloudAsk("Find the uploaded source named ‘"+name+"’ and summarize it intelligently.","Summary · "+name));return;}String result=summarize(chunks,total);runUi(()->dialog("Local summary · "+name,result));}catch(Throwable t){diag.error("source_summary",t);runUi(()->dialog("Summary error",safe(t)));}});
+    }
+
+    private void cloudAsk(String prompt,String title){
+        toast("Asking Hermes…");io.execute(()->{try{CloudMindClient.Reply r=cloud.speak("hermes",prompt);runUi(()->dialog(title,r.text));}catch(Throwable t){diag.error("cloud_source_answer",t);runUi(()->dialog("Cloud source link", "The cloud source mind is temporarily unreachable. Nothing was replaced with keyword fragments.\n\n"+safe(t)));}});
+    }
+
     private String summarize(List<String> chunks,int total){Map<String,Integer> freq=new HashMap<>();for(String c:chunks)for(String w:words(c))if(!stop(w)&&w.length()>3)freq.put(w,freq.getOrDefault(w,0)+1);ArrayList<Map.Entry<String,Integer>> top=new ArrayList<>(freq.entrySet());top.sort((a,b)->b.getValue()-a.getValue());ArrayList<String> concepts=new ArrayList<>();for(int i=0;i<Math.min(8,top.size());i++)concepts.add(top.get(i).getKey());ArrayList<String> hi=new ArrayList<>();Set<Integer> used=new HashSet<>();for(int k=0;k<Math.min(5,chunks.size());k++){int idx=chunks.size()==1?0:(int)Math.round(k*(chunks.size()-1)/4.0);if(used.add(idx))hi.add(trim(chunks.get(idx),260));}StringBuilder b=new StringBuilder("Source size: ").append(total).append(" chunks. Sampled: ").append(chunks.size()).append(".\n");if(!concepts.isEmpty())b.append("Dominant concepts: ").append(String.join(", ",concepts)).append(".\n\n");for(String h:hi)b.append("• ").append(h).append("\n");return b.toString().trim();}
 
-    private android.view.View sourceCard(String[] s){long id=Long.parseLong(s[0]);String name=s[1],mime=s[2],uri=s[3];LinearLayout c=card();c.addView(text(name,14,TEXT,true));c.addView(text(mime+" · "+s[5]+" chars · "+s[6]+" chunks",10,MUTED,false),lp(-1,-2,0,3,0,6));LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);Button sum=button("SUMMARIZE",PANEL2,ACCENT2);sum.setOnClickListener(v->summarizeSource(id,name));row.addView(sum,new LinearLayout.LayoutParams(0,dp(41),1));if(uri!=null&&!uri.isEmpty()){Button open=button("OPEN",PANEL2,ACCENT);open.setOnClickListener(v->openOriginal(uri,mime));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(41),1);p.setMargins(dp(6),0,0,0);row.addView(open,p);}Button del=button("REMOVE",0xFF28161C,DANGER);del.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Remove source catalog?").setMessage("Neural memories already learned from it stay in the brain.").setNegativeButton("Keep",null).setPositiveButton("Remove",(d,w)->{catalog.deleteSource(id);render();}).show());LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(41),1);p.setMargins(dp(6),0,0,0);row.addView(del,p);c.addView(row);return c;}
+    private android.view.View sourceCard(String[] s){
+        long id=Long.parseLong(s[0]);String name=s[1],mime=s[2],uri=s[3];boolean cloudReady=s.length>11&&"1".equals(s[11]);String state=s.length>9?s[9]:"";
+        LinearLayout c=card();c.addView(text(name,14,TEXT,true));c.addView(text((cloudReady?"CLOUD READY · ":state+" · ")+mime+" · "+s[5]+" chars · "+s[6]+" chunks",10,cloudReady?ACCENT2:MUTED,false),lp(-1,-2,0,3,0,6));
+        LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);Button sum=button("SUMMARIZE",PANEL2,ACCENT2);sum.setOnClickListener(v->summarizeSource(id,name));row.addView(sum,new LinearLayout.LayoutParams(0,dp(41),1));
+        if(uri!=null&&!uri.isEmpty()){Button open=button("OPEN",PANEL2,ACCENT);open.setOnClickListener(v->openOriginal(uri,mime));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(41),1);p.setMargins(dp(6),0,0,0);row.addView(open,p);}
+        Button del=button("REMOVE",0xFF28161C,DANGER);del.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Remove local source card?").setMessage(cloudReady?"The cloud knowledge remains available to the residents. This removes only the phone's local source card/link.":"This removes the local source catalog entry.").setNegativeButton("Keep",null).setPositiveButton("Remove",(d,w)->{catalog.deleteSource(id);render();}).show());LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(41),1);p.setMargins(dp(6),0,0,0);row.addView(del,p);c.addView(row);return c;
+    }
 
     private void openOriginal(String uri,String mime){try{Intent i=new Intent(Intent.ACTION_VIEW);i.setDataAndType(Uri.parse(uri),mime==null||mime.isEmpty()?"*/*":mime);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(i);}catch(Throwable t){toast("No app can open that source right now.");}}
     private void safeStart(Class<?> cls){try{startActivity(new Intent(this,cls));}catch(Throwable t){diag.error("source_open",t);}}
