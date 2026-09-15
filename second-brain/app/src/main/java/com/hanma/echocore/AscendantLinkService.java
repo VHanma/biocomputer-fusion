@@ -1,80 +1,346 @@
 package com.hanma.echocore;
 
-import android.app.Notification;import android.app.NotificationChannel;import android.app.NotificationManager;import android.app.PendingIntent;import android.app.Service;import android.content.Intent;import android.net.ConnectivityManager;import android.net.Network;import android.net.NetworkCapabilities;import android.os.Build;import android.os.IBinder;import org.json.JSONArray;import org.json.JSONObject;import java.io.BufferedReader;import java.io.InputStream;import java.io.InputStreamReader;import java.io.OutputStream;import java.net.HttpURLConnection;import java.net.URL;import java.nio.charset.StandardCharsets;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.os.Build;
+import android.os.IBinder;
 
-/** Continuum City Gate. Remote control uses the same cloud minds as the resident rooms. */
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+/** Continuum City Gate. Remote control uses the same cloud minds as resident rooms. */
 public class AscendantLinkService extends Service {
-    public static final String KEY_ENABLED="ascendant_link_enabled",KEY_ID="ascendant_device_id";
-    private static final String KEY_SECRET="ascendant_device_secret",BASE="https://vdvdijoniwhqorawaufi.supabase.co/functions/v1/echocore-relay",CHANNEL="echocore_ascendant_link",VERSION="19.0.0";
+    public static final String KEY_ENABLED="ascendant_link_enabled";
+    public static final String KEY_ID="ascendant_device_id";
+    private static final String KEY_SECRET="ascendant_device_secret";
+    private static final String BASE="https://vdvdijoniwhqorawaufi.supabase.co/functions/v1/echocore-relay";
+    private static final String CHANNEL="echocore_ascendant_link";
+    private static final String VERSION="19.0.0";
     private static final int NID=18436;
-    private volatile boolean running;private Thread worker;private SecurePrefs prefs;private DiagnosticsStore diag;
 
-    public static void start(android.content.Context c){Intent i=new Intent(c,AscendantLinkService.class);if(Build.VERSION.SDK_INT>=26)c.startForegroundService(i);else c.startService(i);}
-    @Override public void onCreate(){super.onCreate();prefs=new SecurePrefs(this);diag=new DiagnosticsStore(this);createChannel();startForeground(NID,note("Opening Continuum Cloud City Gate…"));}
-    @Override public int onStartCommand(Intent i,int flags,int id){prefs.putBool(KEY_ENABLED,true);if(!running){running=true;worker=new Thread(this::loop,"Continuum-CityGate");worker.setUncaughtExceptionHandler((t,e)->{diag.processCrash(t.getName(),e);running=false;stopSelf();});worker.start();}return START_STICKY;}
+    private volatile boolean running;
+    private Thread worker;
+    private SecurePrefs prefs;
+    private DiagnosticsStore diag;
 
-    private void loop(){int failures=0;while(running&&!Thread.currentThread().isInterrupted()&&prefs.getBool(KEY_ENABLED,true)){try{if(!network()){sleep(8000);continue;}ensureRegistered();heartbeat();poll();failures=0;diag.setState("CONTINUUM_CLOUD_LIVE");update("Continuum Cloud City Gate live");sleep(4200);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}catch(Throwable t){failures++;diag.relayFailure("AscendantLink: "+safe(t),failures);if(t instanceof RelayError&&((RelayError)t).code==401)reset();sleepQuiet(Math.min(60000,3000L*(1L<<Math.min(4,failures))));}}running=false;}
+    public static void start(Context c){
+        Intent i=new Intent(c,AscendantLinkService.class);
+        if(Build.VERSION.SDK_INT>=26)c.startForegroundService(i);else c.startService(i);
+    }
 
-    private void ensureRegistered() throws Exception{String id=prefs.get(KEY_ID,"");String sec=prefs.getSecret(KEY_SECRET);if(!id.isEmpty()&&!sec.isEmpty())return;JSONObject b=new JSONObject().put("app_version",VERSION).put("capabilities",caps());JSONObject r=post("/register",b,false);String ni=r.optString("device_id",""),ns=r.optString("device_secret","");if(ni.isEmpty()||ns.isEmpty())throw new Exception("City Gate registration failed");prefs.put(KEY_ID,ni);prefs.putSecret(KEY_SECRET,ns);diag.event("CONTINUUM_REGISTERED",shortId(ni));}
-    private void heartbeat() throws Exception{JSONObject h=new JSONObject();try(BrainDatabase b=new BrainDatabase(this);SourceCatalog s=new SourceCatalog(this);AscendantStore a=new AscendantStore(this);ImportStateStore q=new ImportStateStore(this)){FoundationalArchive.install(a);JSONObject cloudState=new JSONObject();try{cloudState=new CloudMindClient(this).status();}catch(Throwable t){cloudState.put("ok",false).put("error",safe(t));}h.put("app_version",VERSION).put("capabilities",caps()).put("health",new JSONObject().put("state","CONTINUUM_CLOUD_LIVE").put("memories",b.count()).put("sources",s.countSources()).put("city",a.stats()).put("foundational_archive",FoundationalArchive.count(a)).put("phoenix",q.snapshot()).put("cloud_mind",cloudState).put("reasoner","ContinuumCloudMind+CloudCouncil"));}post("/heartbeat",h,true);}
-    private void poll() throws Exception{JSONObject r=post("/poll",new JSONObject(),true);JSONArray a=r.optJSONArray("commands");if(a==null)return;for(int i=0;i<a.length();i++){JSONObject row=a.optJSONObject(i);if(row==null)continue;String cid=row.optString("id","");JSONObject cmd=row.optJSONObject("command");if(cid.isEmpty()||cmd==null)continue;JSONObject resp=new JSONObject();String action=cmd.optString("action","");try{JSONObject p=cmd.optJSONObject("payload");if(p==null)p=new JSONObject();resp.put("status","ok").put("payload",execute(action,p));}catch(Throwable t){resp.put("status","error").put("payload",new JSONObject().put("type",t.getClass().getSimpleName()).put("message",safe(t)));diag.error("city_gate:"+action,t);}post("/respond",new JSONObject().put("command_id",cid).put("response",resp),true);diag.commandDone("CONTINUUM:"+action);}}
+    @Override public void onCreate(){
+        super.onCreate();
+        prefs=new SecurePrefs(this);
+        diag=new DiagnosticsStore(this);
+        createChannel();
+        startForeground(NID,note("Opening Continuum Cloud City Gate…"));
+    }
+
+    @Override public int onStartCommand(Intent i,int flags,int id){
+        prefs.putBool(KEY_ENABLED,true);
+        if(!running){
+            running=true;
+            worker=new Thread(this::loop,"Continuum-CityGate");
+            worker.setUncaughtExceptionHandler((t,e)->{
+                diag.processCrash(t.getName(),e);
+                running=false;
+                stopSelf();
+            });
+            worker.start();
+        }
+        return START_STICKY;
+    }
+
+    private void loop(){
+        int failures=0;
+        while(running&&!Thread.currentThread().isInterrupted()&&prefs.getBool(KEY_ENABLED,true)){
+            try{
+                if(!network()){sleep(8000);continue;}
+                ensureRegistered();
+                heartbeat();
+                poll();
+                failures=0;
+                diag.setState("CONTINUUM_CLOUD_LIVE");
+                update("Continuum Cloud City Gate live");
+                sleep(4200);
+            }catch(InterruptedException e){
+                Thread.currentThread().interrupt();
+                break;
+            }catch(Throwable t){
+                failures++;
+                diag.relayFailure("AscendantLink: "+safe(t),failures);
+                if(t instanceof RelayError&&((RelayError)t).code==401)reset();
+                sleepQuiet(Math.min(60000,3000L*(1L<<Math.min(4,failures))));
+            }
+        }
+        running=false;
+    }
+
+    private void ensureRegistered() throws Exception{
+        String id=prefs.get(KEY_ID,"");
+        String sec=prefs.getSecret(KEY_SECRET);
+        if(!id.isEmpty()&&!sec.isEmpty())return;
+        JSONObject request=new JSONObject().put("app_version",VERSION).put("capabilities",caps());
+        JSONObject response=post("/register",request,false);
+        String newId=response.optString("device_id","");
+        String newSecret=response.optString("device_secret","");
+        if(newId.isEmpty()||newSecret.isEmpty())throw new Exception("City Gate registration failed");
+        prefs.put(KEY_ID,newId);
+        prefs.putSecret(KEY_SECRET,newSecret);
+        diag.event("CONTINUUM_REGISTERED",shortId(newId));
+    }
+
+    private void heartbeat() throws Exception{
+        JSONObject h=new JSONObject();
+        try(BrainDatabase b=new BrainDatabase(this);SourceCatalog s=new SourceCatalog(this);AscendantStore a=new AscendantStore(this);ImportStateStore q=new ImportStateStore(this)){
+            FoundationalArchive.install(a);
+            JSONObject cloudState=new JSONObject();
+            try{cloudState=new CloudMindClient(this).status();}
+            catch(Throwable t){cloudState.put("ok",false).put("error",safe(t));}
+            h.put("app_version",VERSION)
+                    .put("capabilities",caps())
+                    .put("health",new JSONObject()
+                            .put("state","CONTINUUM_CLOUD_LIVE")
+                            .put("memories",b.count())
+                            .put("sources",s.countSources())
+                            .put("city",a.stats())
+                            .put("foundational_archive",FoundationalArchive.count(a))
+                            .put("phoenix",q.snapshot())
+                            .put("cloud_mind",cloudState)
+                            .put("reasoner","ContinuumCloudMind+CloudCouncil"));
+        }
+        post("/heartbeat",h,true);
+    }
+
+    private void poll() throws Exception{
+        JSONObject r=post("/poll",new JSONObject(),true);
+        JSONArray commands=r.optJSONArray("commands");
+        if(commands==null)return;
+        for(int i=0;i<commands.length();i++){
+            JSONObject row=commands.optJSONObject(i);
+            if(row==null)continue;
+            String commandId=row.optString("id","");
+            JSONObject command=row.optJSONObject("command");
+            if(commandId.isEmpty()||command==null)continue;
+            JSONObject response=new JSONObject();
+            String action=command.optString("action","");
+            try{
+                JSONObject payload=command.optJSONObject("payload");
+                if(payload==null)payload=new JSONObject();
+                response.put("status","ok").put("payload",execute(action,payload));
+            }catch(Throwable t){
+                response.put("status","error").put("payload",new JSONObject().put("type",t.getClass().getSimpleName()).put("message",safe(t)));
+                diag.error("city_gate:"+action,t);
+            }
+            post("/respond",new JSONObject().put("command_id",commandId).put("response",response),true);
+            diag.commandDone("CONTINUUM:"+action);
+        }
+    }
 
     private Object execute(String action,JSONObject p) throws Exception{
         try(BrainDatabase b=new BrainDatabase(this);SourceCatalog s=new SourceCatalog(this);AscendantStore a=new AscendantStore(this);ImportStateStore q=new ImportStateStore(this)){
-            FoundationalArchive.install(a);HybridRetriever h=new HybridRetriever(a,s,b);ClaimGraphEngine g=new ClaimGraphEngine(a);MissionEngine m=new MissionEngine(a,h);CloudMindClient cloud=new CloudMindClient(this);
+            FoundationalArchive.install(a);
+            HybridRetriever h=new HybridRetriever(a,s,b);
+            ClaimGraphEngine claims=new ClaimGraphEngine(a);
+            MissionEngine missions=new MissionEngine(a,h);
+            CloudMindClient cloud=new CloudMindClient(this);
+
             switch(action){
-                case "health":return new JSONObject().put("version",VERSION).put("brain",b.count()).put("sources",s.countSources()).put("archive",FoundationalArchive.count(a)).put("city",a.stats()).put("phoenix",q.snapshot()).put("cloud",cloud.status()).put("link",diag.snapshotJson());
+                case "health":
+                    return new JSONObject().put("version",VERSION).put("brain",b.count()).put("sources",s.countSources()).put("archive",FoundationalArchive.count(a)).put("city",a.stats()).put("phoenix",q.snapshot()).put("cloud",cloud.status()).put("link",diag.snapshotJson());
                 case "cloud_status":return cloud.status();
                 case "cloud_sync":return cloud.sync();
                 case "cloud_pulse":return cloud.pulse();
-                case "archive_status":return new JSONObject().put("records",FoundationalArchive.count(a)).put("omega_profile",FoundationalArchive.profile("omega")).put("star_council",FoundationalArchive.profile("star-council"));
-                case "archive_context":{String id=p.optString("resident_id","omega");String topic=p.optString("topic",p.optString("q",""));return new JSONObject().put("resident_id",id).put("context",FoundationalArchive.context(a,id,topic,Math.max(1200,Math.min(7000,p.optInt("max_chars",4200)))));}
-                case "ascendant_route":{String qx=p.optString("q",p.optString("question",""));CloudMindClient.Reply r=cloud.speak("omega",qx);return new JSONObject().put("answer",r.text).put("speaker_id",r.speakerId).put("model",r.model).put("routed_to",r.routedTo);}
+                case "archive_status":
+                    return new JSONObject().put("records",FoundationalArchive.count(a)).put("omega_profile",FoundationalArchive.profile("omega")).put("star_council",FoundationalArchive.profile("star-council"));
+                case "archive_context":{
+                    String resident=p.optString("resident_id","omega");
+                    String topic=p.optString("topic",p.optString("q",""));
+                    return new JSONObject().put("resident_id",resident).put("context",FoundationalArchive.context(a,resident,topic,Math.max(1200,Math.min(7000,p.optInt("max_chars",4200)))));
+                }
+                case "ascendant_route":{
+                    String question=p.optString("q",p.optString("question",""));
+                    CloudMindClient.Reply r=cloud.speak("omega",question);
+                    return replyJson(r,"answer");
+                }
                 case "hybrid_search":return hits(h.search(p.optString("q",""),Math.max(1,Math.min(30,p.optInt("limit",10)))));
                 case "council_convene":return cloud.council(p.optString("topic",p.optString("q","")),Math.max(3,Math.min(7,p.optInt("residents",5))));
                 case "residents_list":return residents(a.residents());
-                case "resident_speak":{String rid=p.optString("resident_id","omega"),qx=p.optString("topic",p.optString("q",""));CloudMindClient.Reply r=cloud.speak(rid,qx);return new JSONObject().put("response",r.text).put("speaker_id",r.speakerId).put("model",r.model).put("routed_to",r.routedTo);}
-                case "resident_presence":a.setResidentStatus(p.optString("resident_id",""),p.optString("status","HOME"));return new JSONObject().put("ok",true);
-                case "resident_add":return new JSONObject().put("resident_row",a.addResident(p.optString("name","New resident"),p.optString("archetype","Specialist"),p.optString("guild","Explorers"),p.optString("lens","Explore the assigned problem carefully.")));
-                case "mission_create":{String goal=p.optString("goal","");long id=m.create(p.optString("title",goal),goal,p.optInt("priority",8));return new JSONObject().put("mission_id",id).put("brief",m.brief(id));}
-                case "missions_list":return missions(a,m);
-                case "mission_brief":{long id=p.optLong("mission_id",0);return new JSONObject().put("brief",m.brief(id)).put("next",m.nextAction(id)).put("evidence",m.evidenceForMission(id));}
-                case "mission_step":a.setMissionStep(p.optLong("step_id",0),p.optString("status","DONE"));return new JSONObject().put("ok",true);
-                case "claims_list":return claims(a.claims(Math.max(1,Math.min(100,p.optInt("limit",30)))));
-                case "contradictions":return new JSONObject().put("report",g.contradictionReport());
+                case "resident_speak":{
+                    String resident=p.optString("resident_id","omega");
+                    String question=p.optString("topic",p.optString("q",""));
+                    return replyJson(cloud.speak(resident,question),"response");
+                }
+                case "resident_presence":
+                    a.setResidentStatus(p.optString("resident_id",""),p.optString("status","HOME"));
+                    return new JSONObject().put("ok",true);
+                case "resident_add":
+                    return new JSONObject().put("resident_row",a.addResident(p.optString("name","New resident"),p.optString("archetype","Specialist"),p.optString("guild","Explorers"),p.optString("lens","Explore the assigned problem carefully.")));
+                case "mission_create":{
+                    String goal=p.optString("goal","");
+                    long id=missions.create(p.optString("title",goal),goal,p.optInt("priority",8));
+                    return new JSONObject().put("mission_id",id).put("brief",missions.brief(id));
+                }
+                case "missions_list":return missionRows(a,missions);
+                case "mission_brief":{
+                    long id=p.optLong("mission_id",0);
+                    return new JSONObject().put("brief",missions.brief(id)).put("next",missions.nextAction(id)).put("evidence",missions.evidenceForMission(id));
+                }
+                case "mission_step":
+                    a.setMissionStep(p.optLong("step_id",0),p.optString("status","DONE"));
+                    return new JSONObject().put("ok",true);
+                case "claims_list":return claimRows(a.claims(Math.max(1,Math.min(100,p.optInt("limit",30)))));
+                case "contradictions":return new JSONObject().put("report",claims.contradictionReport());
                 case "phoenix_status":return q.snapshot();
-                case "phoenix_start":DocumentImportService.start(this);return new JSONObject().put("ok",true).put("pending",q.pending().size());
-                case "phoenix_cancel":DocumentImportService.cancel(this);return new JSONObject().put("ok",true);
-                case "blackbox":return blackbox(a.blackbox(Math.max(1,Math.min(100,p.optInt("limit",30)))));
+                case "phoenix_start":
+                    DocumentImportService.start(this);
+                    return new JSONObject().put("ok",true).put("pending",q.pending().size());
+                case "phoenix_cancel":
+                    DocumentImportService.cancel(this);
+                    return new JSONObject().put("ok",true);
+                case "blackbox":return blackboxRows(a.blackbox(Math.max(1,Math.min(100,p.optInt("limit",30)))));
                 case "self_repair":return new JSONObject().put("report",new SelfRepairEngine(this,a,q).run());
-                case "brain_search":return memories(b.search(p.optString("q",""),Math.max(1,Math.min(50,p.optInt("limit",10)))));
-                case "memory_add":{String text=p.optString("text","").trim();if(text.isEmpty())throw new Exception("Missing text");long id=b.addMemoryRich(text,p.optString("type","THOUGHT"),p.optString("tags","continuum"),p.optInt("importance",6),p.optInt("valence",0),p.optInt("confidence",7),p.optInt("novelty",5),p.optBoolean("active",false));a.evidence(id,"REMOTE",0,0,0,"CITY_GATE",p.optInt("confidence",7));return new JSONObject().put("memory_id",id);}
-                case "source_search":{JSONArray x=new JSONArray();for(String[]z:s.searchChunks(p.optString("q",""),Math.max(1,Math.min(50,p.optInt("limit",10)))))x.put(new JSONObject().put("source",z[0]).put("part",z[1]).put("text",z[2]));return x;}
-                case "sources_list":{JSONArray x=new JSONArray();for(String[]z:s.recentSources(Math.max(1,Math.min(50,p.optInt("limit",20)))))x.put(new JSONObject().put("id",z[0]).put("name",z[1]).put("mime",z[2]).put("chars",z[5]).put("chunks",z[6]).put("status",z.length>9?z[9]:"").put("cloud_archived",z.length>11?z[11]:"0"));return x;}
-                case "model_packs":{JSONArray x=new JSONArray();try(android.database.Cursor z=a.getReadableDatabase().rawQuery("SELECT id,name,kind,status,version FROM model_packs ORDER BY kind,name",null)){while(z.moveToNext())x.put(new JSONObject().put("id",z.getString(0)).put("name",z.getString(1)).put("kind",z.getString(2)).put("status",z.getString(3)).put("version",z.getString(4)));}return x;}
-                case "capabilities":return caps();default:throw new Exception("Unknown Continuum action: "+action);
+                case "brain_search":return memoryRows(b.search(p.optString("q",""),Math.max(1,Math.min(50,p.optInt("limit",10)))));
+                case "memory_add":{
+                    String text=p.optString("text","").trim();
+                    if(text.isEmpty())throw new Exception("Missing text");
+                    long id=b.addMemoryRich(text,p.optString("type","THOUGHT"),p.optString("tags","continuum"),p.optInt("importance",6),p.optInt("valence",0),p.optInt("confidence",7),p.optInt("novelty",5),p.optBoolean("active",false));
+                    a.evidence(id,"REMOTE",0,0,0,"CITY_GATE",p.optInt("confidence",7));
+                    return new JSONObject().put("memory_id",id);
+                }
+                case "source_search":{
+                    JSONArray out=new JSONArray();
+                    for(String[] row:s.searchChunks(p.optString("q",""),Math.max(1,Math.min(50,p.optInt("limit",10)))))out.put(new JSONObject().put("source",row[0]).put("part",row[1]).put("text",row[2]));
+                    return out;
+                }
+                case "sources_list":{
+                    JSONArray out=new JSONArray();
+                    for(String[] row:s.recentSources(Math.max(1,Math.min(50,p.optInt("limit",20)))))out.put(new JSONObject().put("id",row[0]).put("name",row[1]).put("mime",row[2]).put("chars",row[5]).put("chunks",row[6]).put("status",row.length>9?row[9]:"").put("cloud_archived",row.length>11?row[11]:"0"));
+                    return out;
+                }
+                case "model_packs":{
+                    JSONArray out=new JSONArray();
+                    try(android.database.Cursor c=a.getReadableDatabase().rawQuery("SELECT id,name,kind,status,version FROM model_packs ORDER BY kind,name",null)){
+                        while(c.moveToNext())out.put(new JSONObject().put("id",c.getString(0)).put("name",c.getString(1)).put("kind",c.getString(2)).put("status",c.getString(3)).put("version",c.getString(4)));
+                    }
+                    return out;
+                }
+                case "capabilities":return caps();
+                default:throw new Exception("Unknown Continuum action: "+action);
             }
         }
     }
 
-    private JSONArray caps(){String[]x={"health","cloud_status","cloud_sync","cloud_pulse","archive_status","archive_context","ascendant_route","hybrid_search","council_convene","residents_list","resident_speak","resident_presence","resident_add","mission_create","missions_list","mission_brief","mission_step","claims_list","contradictions","phoenix_status","phoenix_start","phoenix_cancel","blackbox","self_repair","brain_search","memory_add","source_search","sources_list","model_packs","capabilities"};JSONArray a=new JSONArray();for(String s:x)a.put(s);return a;}
-    private JSONArray hits(java.util.List<HybridRetriever.Hit> l)throws Exception{JSONArray a=new JSONArray();for(HybridRetriever.Hit h:l)a.put(new JSONObject().put("source_id",h.sourceId).put("part",h.part).put("memory_id",h.memoryId).put("channel",h.channel).put("score",h.score).put("text",h.text));return a;}
-    private JSONArray memories(java.util.List<MemoryNode> l)throws Exception{JSONArray a=new JSONArray();for(MemoryNode m:l)a.put(new JSONObject().put("id",m.id).put("type",m.type).put("text",m.text).put("tags",m.tags).put("importance",m.importance).put("confidence",m.confidence).put("novelty",m.novelty).put("valence",m.valence).put("active",m.active).put("pinned",m.pinned).put("access_count",m.accessCount));return a;}
-    private JSONArray residents(java.util.List<String[]>l)throws Exception{JSONArray a=new JSONArray();for(String[]r:l)a.put(new JSONObject().put("id",r[0]).put("name",r[1]).put("archetype",r[2]).put("room",r[3]).put("guild",r[4]).put("status",r[5]).put("lens",r[6]).put("model_pack",r[7]));return a;}
-    private JSONArray missions(AscendantStore a,MissionEngine m)throws Exception{JSONArray x=new JSONArray();for(String[]z:a.missions(50)){long id=Long.parseLong(z[0]);x.put(new JSONObject().put("id",id).put("title",z[1]).put("goal",z[2]).put("status",z[3]).put("priority",z[4]).put("next",m.nextAction(id));}return x;}
-    private JSONArray claims(java.util.List<String[]>l)throws Exception{JSONArray a=new JSONArray();for(String[]r:l)a.put(new JSONObject().put("id",r[0]).put("text",r[1]).put("status",r[2]).put("confidence",r[3]).put("source_id",r[4]).put("part",r[5]));return a;}
-    private JSONArray blackbox(java.util.List<String[]>l)throws Exception{JSONArray a=new JSONArray();for(String[]r:l)a.put(new JSONObject().put("ts",r[0]).put("subsystem",r[1]).put("event",r[2]).put("detail",r[3]).put("heap_free_mb",r[4]).put("queue",r[5]));return a;}
+    private JSONObject replyJson(CloudMindClient.Reply r,String key)throws Exception{
+        return new JSONObject().put(key,r.text).put("speaker_id",r.speakerId).put("model",r.model).put("routed_to",r.routedTo);
+    }
+
+    private JSONArray caps(){
+        String[] items={"health","cloud_status","cloud_sync","cloud_pulse","archive_status","archive_context","ascendant_route","hybrid_search","council_convene","residents_list","resident_speak","resident_presence","resident_add","mission_create","missions_list","mission_brief","mission_step","claims_list","contradictions","phoenix_status","phoenix_start","phoenix_cancel","blackbox","self_repair","brain_search","memory_add","source_search","sources_list","model_packs","capabilities"};
+        JSONArray a=new JSONArray();for(String x:items)a.put(x);return a;
+    }
+
+    private JSONArray hits(List<HybridRetriever.Hit> list)throws Exception{
+        JSONArray out=new JSONArray();
+        for(HybridRetriever.Hit h:list)out.put(new JSONObject().put("source_id",h.sourceId).put("part",h.part).put("memory_id",h.memoryId).put("channel",h.channel).put("score",h.score).put("text",h.text));
+        return out;
+    }
+
+    private JSONArray memoryRows(List<MemoryNode> list)throws Exception{
+        JSONArray out=new JSONArray();
+        for(MemoryNode m:list)out.put(new JSONObject().put("id",m.id).put("type",m.type).put("text",m.text).put("tags",m.tags).put("importance",m.importance).put("confidence",m.confidence).put("novelty",m.novelty).put("valence",m.valence).put("active",m.active).put("pinned",m.pinned).put("access_count",m.accessCount));
+        return out;
+    }
+
+    private JSONArray residents(List<String[]> list)throws Exception{
+        JSONArray out=new JSONArray();
+        for(String[] r:list)out.put(new JSONObject().put("id",r[0]).put("name",r[1]).put("archetype",r[2]).put("room",r[3]).put("guild",r[4]).put("status",r[5]).put("lens",r[6]).put("model_pack",r[7]));
+        return out;
+    }
+
+    private JSONArray missionRows(AscendantStore store,MissionEngine engine)throws Exception{
+        JSONArray out=new JSONArray();
+        for(String[] row:store.missions(50)){
+            long id=Long.parseLong(row[0]);
+            JSONObject item=new JSONObject().put("id",id).put("title",row[1]).put("goal",row[2]).put("status",row[3]).put("priority",row[4]).put("next",engine.nextAction(id));
+            out.put(item);
+        }
+        return out;
+    }
+
+    private JSONArray claimRows(List<String[]> list)throws Exception{
+        JSONArray out=new JSONArray();
+        for(String[] row:list)out.put(new JSONObject().put("id",row[0]).put("text",row[1]).put("status",row[2]).put("confidence",row[3]).put("source_id",row[4]).put("part",row[5]));
+        return out;
+    }
+
+    private JSONArray blackboxRows(List<String[]> list)throws Exception{
+        JSONArray out=new JSONArray();
+        for(String[] row:list)out.put(new JSONObject().put("ts",row[0]).put("subsystem",row[1]).put("event",row[2]).put("detail",row[3]).put("heap_free_mb",row[4]).put("queue",row[5]));
+        return out;
+    }
+
     private void postAuth(HttpURLConnection c){c.setRequestProperty("X-Device-Id",prefs.get(KEY_ID,""));c.setRequestProperty("X-Device-Secret",prefs.getSecret(KEY_SECRET));}
-    private JSONObject post(String path,JSONObject body,boolean auth)throws Exception{long start=android.os.SystemClock.elapsedRealtime();HttpURLConnection c=(HttpURLConnection)new URL(BASE+path).openConnection();try{c.setRequestMethod("POST");c.setConnectTimeout(12000);c.setReadTimeout(20000);c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");if(auth)postAuth(c);byte[] data=body.toString().getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(data.length);try(OutputStream o=c.getOutputStream()){o.write(data);}int code=c.getResponseCode();InputStream in=code>=200&&code<300?c.getInputStream():c.getErrorStream();String txt=read(in);if(code<200||code>=300)throw new RelayError(code,txt);diag.relaySuccess(android.os.SystemClock.elapsedRealtime()-start);if(txt.trim().isEmpty())return new JSONObject();return new JSONObject(txt);}finally{c.disconnect();}}
-    private static String read(InputStream in)throws Exception{if(in==null)return "";StringBuilder b=new StringBuilder();try(BufferedReader r=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8))){String l;while((l=r.readLine())!=null){b.append(l);if(b.length()>2_000_000)throw new Exception("Relay response too large");}}return b.toString();}
-    private boolean network(){try{ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);if(cm==null)return true;Network n=cm.getActiveNetwork();if(n==null)return false;NetworkCapabilities c=cm.getNetworkCapabilities(n);return c!=null&&c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);}catch(Throwable t){return true;}}
+
+    private JSONObject post(String path,JSONObject body,boolean auth)throws Exception{
+        long start=android.os.SystemClock.elapsedRealtime();
+        HttpURLConnection c=(HttpURLConnection)new URL(BASE+path).openConnection();
+        try{
+            c.setRequestMethod("POST");c.setConnectTimeout(12000);c.setReadTimeout(20000);c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");if(auth)postAuth(c);
+            byte[] data=body.toString().getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(data.length);
+            try(OutputStream o=c.getOutputStream()){o.write(data);}
+            int code=c.getResponseCode();InputStream in=code>=200&&code<300?c.getInputStream():c.getErrorStream();String txt=read(in);
+            if(code<200||code>=300)throw new RelayError(code,txt);
+            diag.relaySuccess(android.os.SystemClock.elapsedRealtime()-start);
+            return txt.trim().isEmpty()?new JSONObject():new JSONObject(txt);
+        }finally{c.disconnect();}
+    }
+
+    private static String read(InputStream in)throws Exception{
+        if(in==null)return "";StringBuilder b=new StringBuilder();
+        try(BufferedReader r=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8))){String line;while((line=r.readLine())!=null){b.append(line);if(b.length()>2_000_000)throw new Exception("Relay response too large");}}
+        return b.toString();
+    }
+
+    private boolean network(){
+        try{ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);if(cm==null)return true;Network n=cm.getActiveNetwork();if(n==null)return false;NetworkCapabilities c=cm.getNetworkCapabilities(n);return c!=null&&c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);}catch(Throwable t){return true;}
+    }
+
     private void reset(){prefs.remove(KEY_ID);prefs.remove(KEY_SECRET);}
-    private void sleep(long ms)throws InterruptedException{Thread.sleep(ms);}private void sleepQuiet(long ms){try{Thread.sleep(ms);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
-    private void createChannel(){if(Build.VERSION.SDK_INT>=26){NotificationManager n=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);if(n!=null)n.createNotificationChannel(new NotificationChannel(CHANNEL,"EchoCore Continuum City Gate",NotificationManager.IMPORTANCE_LOW));}}
-    private Notification note(String s){PendingIntent p=PendingIntent.getActivity(this,93,new Intent(this,SanctumActivity.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL):new Notification.Builder(this);return b.setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("EchoCore Ω Continuum Cloud Minds").setContentText(s).setContentIntent(p).setOnlyAlertOnce(true).setOngoing(true).build();}
+    private void sleep(long ms)throws InterruptedException{Thread.sleep(ms);}
+    private void sleepQuiet(long ms){try{Thread.sleep(ms);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+
+    private void createChannel(){
+        if(Build.VERSION.SDK_INT>=26){NotificationManager n=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);if(n!=null)n.createNotificationChannel(new NotificationChannel(CHANNEL,"EchoCore Continuum City Gate",NotificationManager.IMPORTANCE_LOW));}
+    }
+
+    private Notification note(String s){
+        PendingIntent p=PendingIntent.getActivity(this,93,new Intent(this,SanctumActivity.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,CHANNEL):new Notification.Builder(this);
+        return b.setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("EchoCore Ω Continuum Cloud Minds").setContentText(s).setContentIntent(p).setOnlyAlertOnce(true).setOngoing(true).build();
+    }
+
     private void update(String s){NotificationManager n=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);if(n!=null)n.notify(NID,note(s));}
     @Override public void onDestroy(){running=false;if(worker!=null)worker.interrupt();super.onDestroy();}
     @Override public IBinder onBind(Intent i){return null;}
+
     private static String safe(Throwable t){if(t==null)return "unknown";String s=t.getClass().getSimpleName()+": "+(t.getMessage()==null?"":t.getMessage());return s.length()>800?s.substring(0,800):s;}
     private static String shortId(String s){return s.length()>12?s.substring(0,6)+"…"+s.substring(s.length()-6):s;}
     private static class RelayError extends Exception{final int code;RelayError(int c,String m){super(m);code=c;}}
