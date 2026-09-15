@@ -12,7 +12,7 @@
         android:allowBackup="true"
         android:fullBackupContent="true"
         android:icon="@drawable/ic_launcher"
-        android:label="EchoCore Ω Living Minds"
+        android:label="EchoCore Ω Continuum Cloud Minds"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
         android:theme="@style/AppTheme">
@@ -45,6 +45,7 @@
         <service android:name=".CloudLinkService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="remoteMessaging" />
         <service android:name=".DocumentImportService" android:process=":phoenix" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="dataSync" />
         <service android:name=".LivingPulseJobService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
+        <service android:name=".CloudArchiveJobService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
         <receiver android:name=".LivingBootReceiver" android:enabled="true" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
         </receiver>
