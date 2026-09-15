@@ -109,12 +109,16 @@ public class SourceActivity extends Activity {
 
     private void summarizeSource(long id,String name){
         String[] row=catalog.sourceById(id);boolean cloudReady=row!=null&&row.length>11&&"1".equals(row[11]);
-        if(cloudReady){cloudAsk("Using the uploaded source named ‘"+name+"’, give me an intelligent summary of its major ideas, structure, important claims, and useful connections. Do not dump chunks or internal retrieval metadata.","Summary · "+name);return;}
-        toast("Building bounded local summary…");io.execute(()->{try{int total=catalog.countChunks(id);List<String> chunks=catalog.sampleChunks(id,400);if(chunks.isEmpty()){runUi(()->cloudAsk("Find the uploaded source named ‘"+name+"’ and summarize it intelligently.","Summary · "+name));return;}String result=summarize(chunks,total);runUi(()->dialog("Local summary · "+name,result));}catch(Throwable t){diag.error("source_summary",t);runUi(()->dialog("Summary error",safe(t)));}});
+        if(cloudReady){cloudSourceAsk(String.valueOf(id),name,"Summarize this source intelligently.",true,"Summary · "+name);return;}
+        toast("Building bounded local summary…");io.execute(()->{try{int total=catalog.countChunks(id);List<String> chunks=catalog.sampleChunks(id,400);if(chunks.isEmpty()){runUi(()->cloudSourceAsk(String.valueOf(id),name,"Summarize this source intelligently.",true,"Summary · "+name));return;}String result=summarize(chunks,total);runUi(()->dialog("Local summary · "+name,result));}catch(Throwable t){diag.error("source_summary",t);runUi(()->dialog("Summary error",safe(t)));}});
+    }
+
+    private void cloudSourceAsk(String sourceId,String sourceName,String question,boolean summarize,String title){
+        toast("Asking Hermes…");io.execute(()->{try{CloudMindClient.Reply r=cloud.askSource("hermes",sourceId,sourceName,question,summarize);runUi(()->dialog(title,r.text));}catch(Throwable t){diag.error("cloud_source_exact",t);runUi(()->dialog("Cloud source link","The exact cloud source is temporarily unreachable. Nothing was replaced with keyword fragments.\n\n"+safe(t)));}});
     }
 
     private void cloudAsk(String prompt,String title){
-        toast("Asking Hermes…");io.execute(()->{try{CloudMindClient.Reply r=cloud.speak("hermes",prompt);runUi(()->dialog(title,r.text));}catch(Throwable t){diag.error("cloud_source_answer",t);runUi(()->dialog("Cloud source link", "The cloud source mind is temporarily unreachable. Nothing was replaced with keyword fragments.\n\n"+safe(t)));}});
+        toast("Asking Hermes…");io.execute(()->{try{CloudMindClient.Reply r=cloud.speak("hermes",prompt);runUi(()->dialog(title,r.text));}catch(Throwable t){diag.error("cloud_source_answer",t);runUi(()->dialog("Cloud source link","The cloud source mind is temporarily unreachable. Nothing was replaced with keyword fragments.\n\n"+safe(t)));}});
     }
 
     private String summarize(List<String> chunks,int total){Map<String,Integer> freq=new HashMap<>();for(String c:chunks)for(String w:words(c))if(!stop(w)&&w.length()>3)freq.put(w,freq.getOrDefault(w,0)+1);ArrayList<Map.Entry<String,Integer>> top=new ArrayList<>(freq.entrySet());top.sort((a,b)->b.getValue()-a.getValue());ArrayList<String> concepts=new ArrayList<>();for(int i=0;i<Math.min(8,top.size());i++)concepts.add(top.get(i).getKey());ArrayList<String> hi=new ArrayList<>();Set<Integer> used=new HashSet<>();for(int k=0;k<Math.min(5,chunks.size());k++){int idx=chunks.size()==1?0:(int)Math.round(k*(chunks.size()-1)/4.0);if(used.add(idx))hi.add(trim(chunks.get(idx),260));}StringBuilder b=new StringBuilder("Source size: ").append(total).append(" chunks. Sampled: ").append(chunks.size()).append(".\n");if(!concepts.isEmpty())b.append("Dominant concepts: ").append(String.join(", ",concepts)).append(".\n\n");for(String h:hi)b.append("• ").append(h).append("\n");return b.toString().trim();}
