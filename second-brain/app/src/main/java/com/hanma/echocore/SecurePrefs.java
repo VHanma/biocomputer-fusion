@@ -17,11 +17,17 @@ import javax.crypto.spec.GCMParameterSpec;
 public class SecurePrefs {
     private static final String ALIAS="echocore_omega_model_key";
     private static final String PREF="echocore_omega_settings";
+    private static final String DEVICE_ID_KEY="ascendant_device_id";
+    private static final String DEVICE_SECRET_KEY="ascendant_device_secret";
+    private static final ThreadLocal<String> PENDING_DEVICE_ID=new ThreadLocal<>();
     private final SharedPreferences prefs;
 
     public SecurePrefs(Context context){prefs=context.getSharedPreferences(PREF,Context.MODE_PRIVATE);}
 
-    public void put(String key,String value){prefs.edit().putString(key,value==null?"":value).apply();}
+    public void put(String key,String value){
+        if(DEVICE_ID_KEY.equals(key)){PENDING_DEVICE_ID.set(value==null?"":value);return;}
+        prefs.edit().putString(key,value==null?"":value).apply();
+    }
     public String get(String key,String fallback){try{return prefs.getString(key,fallback);}catch(ClassCastException e){return fallback;}}
     public void putBool(String key,boolean value){prefs.edit().putBoolean(key,value).apply();}
     public boolean getBool(String key,boolean fallback){try{return prefs.getBoolean(key,fallback);}catch(ClassCastException e){return fallback;}}
@@ -30,25 +36,44 @@ public class SecurePrefs {
     public void putLong(String key,long value){prefs.edit().putLong(key,value).apply();}
     public long getLong(String key,long fallback){try{return prefs.getLong(key,fallback);}catch(ClassCastException e){return fallback;}}
     public boolean contains(String key){return prefs.contains(key);}
-    public void remove(String key){prefs.edit().remove(key).apply();}
+    public void remove(String key){
+        if(DEVICE_ID_KEY.equals(key)||DEVICE_SECRET_KEY.equals(key)){clearIdentity(DEVICE_ID_KEY,DEVICE_SECRET_KEY);return;}
+        prefs.edit().remove(key).apply();
+    }
 
     public void putSecret(String key,String value){
-        try{prefs.edit().putString(key,encryptPayload(value)).apply();}
-        catch(Exception e){prefs.edit().remove(key).apply();}
+        try{
+            String payload=encryptPayload(value);
+            if(DEVICE_SECRET_KEY.equals(key)){
+                String pending=PENDING_DEVICE_ID.get();
+                if(pending!=null&&!pending.isEmpty()){
+                    prefs.edit().putString(DEVICE_ID_KEY,pending).putString(DEVICE_SECRET_KEY,payload).commit();
+                    PENDING_DEVICE_ID.remove();
+                    return;
+                }
+            }
+            prefs.edit().putString(key,payload).apply();
+        }catch(Exception e){prefs.edit().remove(key).apply();}
     }
 
     /** Stores a plain id and encrypted secret in one synchronous transaction. */
     public synchronized boolean putIdentity(String idKey,String id,String secretKey,String secret){
         try{
             String payload=encryptPayload(secret);
-            return prefs.edit().putString(idKey,id==null?"":id).putString(secretKey,payload).commit();
+            boolean ok=prefs.edit().putString(idKey,id==null?"":id).putString(secretKey,payload).commit();
+            if(DEVICE_ID_KEY.equals(idKey))PENDING_DEVICE_ID.remove();
+            return ok;
         }catch(Exception e){
             prefs.edit().remove(idKey).remove(secretKey).commit();
+            if(DEVICE_ID_KEY.equals(idKey))PENDING_DEVICE_ID.remove();
             return false;
         }
     }
 
-    public synchronized void clearIdentity(String idKey,String secretKey){prefs.edit().remove(idKey).remove(secretKey).commit();}
+    public synchronized void clearIdentity(String idKey,String secretKey){
+        prefs.edit().remove(idKey).remove(secretKey).commit();
+        if(DEVICE_ID_KEY.equals(idKey))PENDING_DEVICE_ID.remove();
+    }
 
     public String getSecret(String key){
         String payload;
