@@ -33,15 +33,22 @@ public class SecurePrefs {
     public void remove(String key){prefs.edit().remove(key).apply();}
 
     public void putSecret(String key,String value){
-        try{
-            SecretKey secret=getOrCreateKey();
-            Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.ENCRYPT_MODE,secret);
-            byte[] encrypted=cipher.doFinal((value==null?"":value).getBytes(StandardCharsets.UTF_8));
-            String payload=Base64.encodeToString(cipher.getIV(),Base64.NO_WRAP)+":"+Base64.encodeToString(encrypted,Base64.NO_WRAP);
-            prefs.edit().putString(key,payload).apply();
-        }catch(Exception e){prefs.edit().remove(key).apply();}
+        try{prefs.edit().putString(key,encryptPayload(value)).apply();}
+        catch(Exception e){prefs.edit().remove(key).apply();}
     }
+
+    /** Stores a plain id and encrypted secret in one synchronous transaction. */
+    public synchronized boolean putIdentity(String idKey,String id,String secretKey,String secret){
+        try{
+            String payload=encryptPayload(secret);
+            return prefs.edit().putString(idKey,id==null?"":id).putString(secretKey,payload).commit();
+        }catch(Exception e){
+            prefs.edit().remove(idKey).remove(secretKey).commit();
+            return false;
+        }
+    }
+
+    public synchronized void clearIdentity(String idKey,String secretKey){prefs.edit().remove(idKey).remove(secretKey).commit();}
 
     public String getSecret(String key){
         String payload;
@@ -54,6 +61,14 @@ public class SecurePrefs {
             cipher.init(Cipher.DECRYPT_MODE,secret,new GCMParameterSpec(128,Base64.decode(p[0],Base64.NO_WRAP)));
             return new String(cipher.doFinal(Base64.decode(p[1],Base64.NO_WRAP)),StandardCharsets.UTF_8);
         }catch(Exception e){return "";}
+    }
+
+    private String encryptPayload(String value)throws Exception{
+        SecretKey secret=getOrCreateKey();
+        Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE,secret);
+        byte[] encrypted=cipher.doFinal((value==null?"":value).getBytes(StandardCharsets.UTF_8));
+        return Base64.encodeToString(cipher.getIV(),Base64.NO_WRAP)+":"+Base64.encodeToString(encrypted,Base64.NO_WRAP);
     }
 
     private SecretKey getOrCreateKey() throws Exception{
