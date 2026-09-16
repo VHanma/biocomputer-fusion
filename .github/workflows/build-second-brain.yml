@@ -1,4 +1,4 @@
-name: Build EchoCore Continuum Cloud Minds v19 APK
+name: Build EchoCore Continuum Cloud Minds 19.1 APK
 on:
   push:
     branches: [ "second-brain-build", "ascendant-build" ]
@@ -49,17 +49,19 @@ jobs:
               raise SystemExit('Civilization Vault verification floor not met')
           c.close()
           PY
-      - name: Stamp Continuum Cloud Minds v19
+      - name: Stamp Continuum Cloud Minds 19.1
         run: |
-          sed -i -E 's/VERSION="[0-9]+\.[0-9]+\.[0-9]+"/VERSION="19.0.0"/' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
-          sed -i 's/Living Minds City Gate/Continuum Cloud Minds City Gate/g' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
-          sed -i 's/SOURCE CORTEX v18 · metabolized deep ingestion/SOURCE CORTEX v19 · cloud-metabolized deep ingestion/' app/src/main/java/com/hanma/echocore/SourceActivity.java
+          sed -i -E 's/VERSION="[0-9]+\.[0-9]+\.[0-9]+"/VERSION="19.1.0"/' app/src/main/java/com/hanma/echocore/AscendantLinkService.java
+          sed -i 's/SOURCE CORTEX v19 · cloud-metabolized deep ingestion/SOURCE CORTEX v19.1 · cloud-metabolized deep ingestion/' app/src/main/java/com/hanma/echocore/SourceActivity.java
           grep -q 'CloudMindClient' app/src/main/java/com/hanma/echocore/ResidentMindEngine.java
+          grep -q 'putIdentity' app/src/main/java/com/hanma/echocore/SecurePrefs.java
+          grep -q 'repairIdentity' app/src/main/java/com/hanma/echocore/CloudMindClient.java
           grep -q 'CloudArchiveJobService' app/src/main/AndroidManifest.xml
-          grep -q "versionName '19.0.0'" app/build.gradle
+          grep -q "versionName '19.1.0'" app/build.gradle
+          grep -q 'versionCode 20' app/build.gradle
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
-      - name: Verify Continuum Cloud Minds v19 APK
+      - name: Verify Continuum Cloud Minds 19.1 APK
         run: |
           test -f app/build/outputs/apk/debug/app-debug.apk
           unzip -t app/build/outputs/apk/debug/app-debug.apk >/dev/null
@@ -68,6 +70,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: EchoCore-Continuum-Cloud-Minds-v19
+          name: EchoCore-Continuum-Cloud-Minds-19.1
           path: second-brain/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
