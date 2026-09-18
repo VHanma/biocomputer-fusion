@@ -10,7 +10,7 @@ import java.util.ArrayList;
 /**
  * Uploads cleaned, nonduplicate passages to the cloud archive.
  * Source text lives in SourceCatalog; quality metadata lives in AscendantStore.
- * Only after every eligible passage is acknowledged do we release the bulky local copies.
+ * Upload progress is resumable. Only after every eligible passage is acknowledged do we release bulky local copies.
  */
 public class CloudKnowledgeSync {
     private final CloudMindClient cloud;
@@ -24,22 +24,57 @@ public class CloudKnowledgeSync {
         int total=countEligible(catalog,sourceId);
         if(total<=0)throw new Exception("No refined passages eligible for cloud archive");
         long chars=sourceChars(catalog,sourceId);
-        int sent=0;JSONArray batch=new JSONArray();
 
+        int resume=remoteProgress(String.valueOf(sourceId),total);
+        if(resume>=total){
+            pruneLocalCopies(catalog,sourceId);
+            asc.blackbox("CLOUD_ARCHIVE","SOURCE_CONFIRMED",sourceName+" · cloud already had "+total+" refined passages · local document bodies released","");
+            return total;
+        }
+
+        int sent=resume,eligibleSeen=0;
+        JSONArray batch=new JSONArray();
         try(Cursor c=catalog.getReadableDatabase().rawQuery("SELECT part,text FROM chunks WHERE source_id=? ORDER BY part",new String[]{String.valueOf(sourceId)})){
             while(c.moveToNext()){
                 int part=c.getInt(0);String raw=c.getString(1);Meta m=meta(sourceId,part);KnowledgeCleaner.Analysis a=KnowledgeCleaner.analyze(raw);
                 if(a.garbage||m.duplicateOf>0||a.cleaned.trim().isEmpty()||m.quality<4)continue;
+                eligibleSeen++;
+                if(eligibleSeen<=resume)continue;
                 batch.put(new JSONObject().put("part",part).put("heading",m.heading).put("text",a.cleaned).put("quality",Math.max(1,Math.min(10,m.quality))).put("resident_affinity",affinity(a.cleaned+" "+m.heading)));
-                if(batch.length()>=24){int next=sent+batch.length();JSONObject ack=cloud.uploadKnowledge(String.valueOf(sourceId),sourceName,batch,next,total,chars,next>=total);if(!ack.optBoolean("ok",false))throw new Exception("Cloud archive rejected batch at "+next+"/"+total);sent=next;batch=new JSONArray();}
+                if(batch.length()>=24){
+                    int next=sent+batch.length();
+                    JSONObject ack=cloud.uploadKnowledge(String.valueOf(sourceId),sourceName,batch,next,total,chars,next>=total);
+                    if(!ack.optBoolean("ok",false))throw new Exception("Cloud archive rejected batch at "+next+"/"+total);
+                    sent=next;batch=new JSONArray();
+                    asc.blackbox("CLOUD_ARCHIVE","BATCH_ACK",sourceName+" · "+sent+"/"+total,"");
+                }
             }
         }
-        if(batch.length()>0){int next=sent+batch.length();JSONObject ack=cloud.uploadKnowledge(String.valueOf(sourceId),sourceName,batch,next,total,chars,true);if(!ack.optBoolean("ok",false))throw new Exception("Cloud archive rejected final batch");sent=next;}
+        if(batch.length()>0){
+            int next=sent+batch.length();
+            JSONObject ack=cloud.uploadKnowledge(String.valueOf(sourceId),sourceName,batch,next,total,chars,next>=total);
+            if(!ack.optBoolean("ok",false))throw new Exception("Cloud archive rejected final batch");
+            sent=next;
+        }
         if(sent!=total)throw new Exception("Cloud archive incomplete: "+sent+"/"+total);
 
+        int confirmed=remoteProgress(String.valueOf(sourceId),total);
+        if(confirmed<total)throw new Exception("Cloud archive ACK not durable yet: "+confirmed+"/"+total);
         pruneLocalCopies(catalog,sourceId);
         asc.blackbox("CLOUD_ARCHIVE","SOURCE_SYNCED",sourceName+" · "+sent+" refined passages · local document bodies released","");
         return sent;
+    }
+
+    private int remoteProgress(String sourceId,int total)throws Exception{
+        JSONObject state=cloud.sync();JSONArray sources=state.optJSONArray("sources");if(sources==null)return 0;
+        int best=0;
+        for(int i=0;i<sources.length();i++){
+            JSONObject r=sources.optJSONObject(i);if(r==null||!sourceId.equals(r.optString("source_id","")))continue;
+            int n=Math.max(0,r.optInt("uploaded_parts",0));
+            if("ready".equalsIgnoreCase(r.optString("status",""))&&n>=Math.max(1,r.optInt("total_parts",total)))return total;
+            if(n>best)best=n;
+        }
+        return Math.min(total,best);
     }
 
     private void pruneLocalCopies(SourceCatalog catalog,long sid){
