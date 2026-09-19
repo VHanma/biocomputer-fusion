@@ -21,12 +21,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-/** Thin authenticated doorway to EchoCore Cloud Mind. No model credentials live in the APK. */
+/** Cloud doorway. Frontier key stays encrypted on-device and is sent only to the Frontier HTTPS route. */
 public class CloudMindClient {
     private static final String MIND="https://vdvdijoniwhqorawaufi.supabase.co/functions/v1/echocore-mind";
+    private static final String FRONTIER="https://vdvdijoniwhqorawaufi.supabase.co/functions/v1/echocore-frontier";
     private static final String COUNCIL_TURN="https://vdvdijoniwhqorawaufi.supabase.co/functions/v1/echocore-council-turn";
     private static final String RELAY="https://vdvdijoniwhqorawaufi.supabase.co/functions/v1/echocore-relay";
-    private static final String KEY_ID="ascendant_device_id",KEY_SECRET="ascendant_device_secret";
+    private static final String KEY_ID="ascendant_device_id",KEY_SECRET="ascendant_device_secret",KEY_OPENAI="api_key";
     private static final Object IDENTITY_LOCK=new Object();
     private final Context app;private final SecurePrefs prefs;
     public CloudMindClient(Context c){app=c.getApplicationContext();prefs=new SecurePrefs(app);}
@@ -34,39 +35,55 @@ public class CloudMindClient {
     public static class Reply {public final String text,speakerId,model,routedTo;Reply(String t,String s,String m,String r){text=t;speakerId=s;model=m;routedTo=r;}}
     private static class Raw {final int code;final String text;Raw(int c,String t){code=c;text=t==null?"":t;}}
 
+    public boolean hasFrontierKey(){return validKey(prefs.getSecret(KEY_OPENAI));}
+
     public void ensureRegistered() throws Exception{
-        synchronized(IDENTITY_LOCK){
-            String id=prefs.get(KEY_ID,"");String sec=prefs.getSecret(KEY_SECRET);if(!id.isEmpty()&&!sec.isEmpty())return;
-            prefs.clearIdentity(KEY_ID,KEY_SECRET);registerLocked();
-        }
+        synchronized(IDENTITY_LOCK){String id=prefs.get(KEY_ID,"");String sec=prefs.getSecret(KEY_SECRET);if(!id.isEmpty()&&!sec.isEmpty())return;prefs.clearIdentity(KEY_ID,KEY_SECRET);registerLocked();}
     }
 
     private void registerLocked() throws Exception{
-        JSONObject body=new JSONObject().put("app_version","19.1.0").put("capabilities",new JSONArray().put("cloud_mind_v19").put("isolated_cloud_council").put("cloud_knowledge").put("resident_messages").put("approval_gate").put("auth_self_repair"));
+        JSONObject body=new JSONObject().put("app_version","19.3.0").put("capabilities",new JSONArray().put("cloud_mind_v19").put("gpt_5_6_sol_frontier").put("isolated_cloud_council").put("cloud_knowledge").put("resident_messages").put("approval_gate").put("auth_self_repair"));
         Raw raw=request(RELAY+"/register",body,false,25000,"","");if(raw.code<200||raw.code>=300)throw new Exception("Cloud registration HTTP "+raw.code+": "+trim(raw.text,700));
-        JSONObject r=raw.text.trim().isEmpty()?new JSONObject():new JSONObject(raw.text);String ni=r.optString("device_id",""),ns=r.optString("device_secret","");if(ni.isEmpty()||ns.isEmpty())throw new Exception("Cloud identity registration failed");
-        if(!prefs.putIdentity(KEY_ID,ni,KEY_SECRET,ns))throw new Exception("Cloud identity could not be stored securely");
+        JSONObject r=raw.text.trim().isEmpty()?new JSONObject():new JSONObject(raw.text);String ni=r.optString("device_id",""),ns=r.optString("device_secret","");if(ni.isEmpty()||ns.isEmpty())throw new Exception("Cloud identity registration failed");if(!prefs.putIdentity(KEY_ID,ni,KEY_SECRET,ns))throw new Exception("Cloud identity could not be stored securely");
     }
 
-    public Reply speak(String residentId,String message) throws Exception{JSONObject b=new JSONObject().put("resident_id",residentId).put("message",message).put("depth",1);return reply(postRaw(MIND+"/speak",b,true,180000),residentId);}
-    public Reply askSource(String residentId,String sourceId,String sourceName,String question,boolean summarize) throws Exception{JSONObject b=new JSONObject().put("resident_id",residentId).put("source_id",sourceId).put("source_name",sourceName).put("question",question).put("summarize",summarize);return reply(postRaw(MIND+"/ask-source",b,true,180000),residentId);}
+    public Reply speak(String residentId,String message) throws Exception{
+        JSONObject b=new JSONObject().put("resident_id",residentId).put("message",message).put("depth",1);
+        if(hasFrontierKey())try{return reply(postRaw(FRONTIER+"/speak",b,true,210000),residentId);}catch(Throwable ignored){}
+        return reply(postRaw(MIND+"/speak",b,true,180000),residentId);
+    }
 
-    /** Council uses isolated cloud turns so one resident failure cannot kill the whole council. */
+    public Reply askSource(String residentId,String sourceId,String sourceName,String question,boolean summarize) throws Exception{
+        JSONObject b=new JSONObject().put("resident_id",residentId).put("source_id",sourceId).put("source_name",sourceName).put("question",question).put("summarize",summarize);
+        if(hasFrontierKey())try{return reply(postRaw(FRONTIER+"/ask-source",b,true,210000),residentId);}catch(Throwable ignored){}
+        return reply(postRaw(MIND+"/ask-source",b,true,180000),residentId);
+    }
+
+    /** Isolated turns preserve individual resident minds. Frontier failure falls sideways to specialist cloud models. */
     public JSONObject council(String topic,int requested) throws Exception{
         ensureRegistered();String q=topic==null?"":topic.trim();if(q.isEmpty())throw new Exception("Council needs a topic");
         List<String> ids=councilResidents(q,Math.max(3,Math.min(5,requested)));ExecutorService pool=Executors.newFixedThreadPool(Math.min(4,ids.size()));ArrayList<Callable<JSONObject>> tasks=new ArrayList<>();
-        for(int i=0;i<ids.size();i++){final String id=ids.get(i);final long delay=i*700L;tasks.add(()->{try{if(delay>0)Thread.sleep(delay);return councilTurn(id,q,"voice","");}catch(Throwable t){return new JSONObject().put("ok",false).put("resident_id",id).put("error",trim(String.valueOf(t.getMessage()),400));}});}
+        for(int i=0;i<ids.size();i++){final String id=ids.get(i);final long delay=i*550L;tasks.add(()->{try{if(delay>0)Thread.sleep(delay);return councilTurn(id,q,"voice","");}catch(Throwable t){return new JSONObject().put("ok",false).put("resident_id",id).put("error",trim(String.valueOf(t.getMessage()),400));}});}
         JSONArray voices=new JSONArray();StringBuilder transcript=new StringBuilder();
-        try{List<Future<JSONObject>> futures=pool.invokeAll(tasks,195,TimeUnit.SECONDS);for(Future<JSONObject> f:futures){if(f.isCancelled())continue;JSONObject r;try{r=f.get();}catch(Throwable t){continue;}if(!r.optBoolean("ok",false))continue;String text=r.optString("reply","").trim();if(text.isEmpty())continue;JSONObject v=new JSONObject().put("resident_id",r.optString("resident_id","")).put("name",r.optString("name",displayName(r.optString("resident_id","resident")))).put("model",r.optString("model","")).put("reply",text);voices.put(v);transcript.append(v.optString("name")).append(": ").append(text).append("\n\n");}}finally{pool.shutdownNow();}
-        if(voices.length()==0)throw new Exception("No Council resident completed a cloud turn");JSONObject omega=councilTurn("omega",q,"synthesis",transcript.toString());if(!omega.optBoolean("ok",false)||omega.optString("reply","").trim().isEmpty())throw new Exception(omega.optString("error","Omega synthesis unavailable"));return new JSONObject().put("ok",true).put("strategy","isolated_resident_turns").put("participants",new JSONArray(ids)).put("voices",voices).put("synthesis",omega.optString("reply")).put("synthesis_model",omega.optString("model",""));
+        try{List<Future<JSONObject>> futures=pool.invokeAll(tasks,220,TimeUnit.SECONDS);for(Future<JSONObject> f:futures){if(f.isCancelled())continue;JSONObject r;try{r=f.get();}catch(Throwable t){continue;}if(!r.optBoolean("ok",false))continue;String text=r.optString("reply","").trim();if(text.isEmpty())continue;JSONObject v=new JSONObject().put("resident_id",r.optString("resident_id","")).put("name",r.optString("name",displayName(r.optString("resident_id","resident")))).put("model",r.optString("model","")).put("provider",r.optString("provider","")).put("reply",text);voices.put(v);transcript.append(v.optString("name")).append(": ").append(text).append("\n\n");}}finally{pool.shutdownNow();}
+        if(voices.length()==0)throw new Exception("No Council resident completed a cloud turn");JSONObject omega=councilTurn("omega",q,"synthesis",transcript.toString());if(!omega.optBoolean("ok",false)||omega.optString("reply","").trim().isEmpty())throw new Exception(omega.optString("error","Omega synthesis unavailable"));return new JSONObject().put("ok",true).put("strategy",hasFrontierKey()?"frontier_isolated_resident_turns":"specialist_isolated_resident_turns").put("participants",new JSONArray(ids)).put("voices",voices).put("synthesis",omega.optString("reply")).put("synthesis_model",omega.optString("model","")).put("synthesis_provider",omega.optString("provider",""));
     }
 
-    private JSONObject councilTurn(String residentId,String topic,String mode,String voices)throws Exception{JSONObject b=new JSONObject().put("resident_id",residentId).put("topic",topic).put("mode",mode);if(voices!=null&&!voices.isEmpty())b.put("voices",voices);return postRaw(COUNCIL_TURN,b,true,"synthesis".equals(mode)?180000:160000);}
+    private JSONObject councilTurn(String residentId,String topic,String mode,String voices)throws Exception{
+        JSONObject b=new JSONObject().put("resident_id",residentId).put("topic",topic).put("mode",mode);if(voices!=null&&!voices.isEmpty())b.put("voices",voices);int timeout="synthesis".equals(mode)?210000:180000;
+        if(hasFrontierKey())try{return postRaw(FRONTIER+"/council-turn",b,true,timeout);}catch(Throwable ignored){}
+        return postRaw(COUNCIL_TURN,b,true,timeout);
+    }
+
     private List<String> councilResidents(String q,int cap){String s=q.toLowerCase(Locale.US);Set<String> ids=new LinkedHashSet<>();if(has(s,"hermet","alchemy","kybalion","symbol","ancient","history","myth","philosoph"))ids.add("hermes");if(has(s,"tesla","electric","coil","circuit","frequency","resonan","field","wireless","energy","machine"))ids.add("tesla");if(has(s,"apk","android","software","code","database","build","bug","camera","algorithm"))ids.add("rival3");if(has(s,"alien","ufo","uap","contact","xeno","signal","space","star"))ids.add("star-council");if(has(s,"leary","psychedel","conditioning","consciousness","psychology"))ids.add("leary");if(has(s,"lain","wire","network","digital identity","protocol","distributed","cyber"))ids.add("lain");if(has(s,"mission","plan","roadmap","strategy","dependency","coordinate"))ids.add("zordon");ids.add("rival1");ids.add("rival2");ids.add("sol");ids.add("rival3");ids.add("hermes");ids.add("tesla");ArrayList<String> out=new ArrayList<>();for(String id:ids){out.add(id);if(out.size()>=cap)break;}return out;}
 
     public JSONObject sync() throws Exception{return postRaw(MIND+"/sync",new JSONObject(),true,35000);}
-    public JSONObject pulse() throws Exception{return postRaw(MIND+"/pulse",new JSONObject(),true,180000);}
-    public JSONObject status() throws Exception{return postRaw(MIND+"/cloud-status",new JSONObject(),true,35000);}
+    public JSONObject pulse() throws Exception{if(hasFrontierKey())try{return postRaw(FRONTIER+"/pulse",new JSONObject(),true,210000);}catch(Throwable ignored){}return postRaw(MIND+"/pulse",new JSONObject(),true,180000);}
+    public JSONObject status() throws Exception{
+        JSONObject fallback=postRaw(MIND+"/cloud-status",new JSONObject(),true,35000);
+        if(hasFrontierKey())try{JSONObject f=postRaw(FRONTIER+"/status",new JSONObject(),true,35000);f.put("available_models",fallback.optInt("available_models",0));f.put("fallback_provider",fallback.optString("provider","specialist cloud models"));return f;}catch(Throwable ignored){}
+        return fallback;
+    }
     public void markRead(long id)throws Exception{postRaw(MIND+"/mark-read",new JSONObject().put("id",id),true,25000);}
     public JSONObject decideProposal(String id,String decision)throws Exception{return postRaw(MIND+"/decide-proposal",new JSONObject().put("id",id).put("decision",decision),true,35000);}
     public JSONObject uploadKnowledge(String sourceId,String sourceName,JSONArray chunks,int uploaded,int total,long chars,boolean complete)throws Exception{JSONObject b=new JSONObject().put("source_id",sourceId).put("source_name",sourceName).put("chunks",chunks).put("uploaded_parts",uploaded).put("total_parts",total).put("total_chars",chars).put("complete",complete);return postRaw(MIND+"/upload-knowledge",b,true,60000);}
@@ -79,13 +96,12 @@ public class CloudMindClient {
         if(raw.code<200||raw.code>=300)throw new Exception("Cloud HTTP "+raw.code+": "+trim(raw.text,700));return raw.text.trim().isEmpty()?new JSONObject():new JSONObject(raw.text);
     }
 
-    private void repairIdentity(String failedId,String failedSecret)throws Exception{
-        synchronized(IDENTITY_LOCK){String nowId=prefs.get(KEY_ID,"");String nowSec=prefs.getSecret(KEY_SECRET);if(nowId.equals(failedId)&&nowSec.equals(failedSecret)){prefs.clearIdentity(KEY_ID,KEY_SECRET);registerLocked();}else if(nowId.isEmpty()||nowSec.isEmpty()){prefs.clearIdentity(KEY_ID,KEY_SECRET);registerLocked();}}
-    }
+    private void repairIdentity(String failedId,String failedSecret)throws Exception{ synchronized(IDENTITY_LOCK){String nowId=prefs.get(KEY_ID,"");String nowSec=prefs.getSecret(KEY_SECRET);if(nowId.equals(failedId)&&nowSec.equals(failedSecret)){prefs.clearIdentity(KEY_ID,KEY_SECRET);registerLocked();}else if(nowId.isEmpty()||nowSec.isEmpty()){prefs.clearIdentity(KEY_ID,KEY_SECRET);registerLocked();}} }
 
     private Raw request(String url,JSONObject body,boolean auth,int readTimeout,String id,String sec)throws Exception{
-        HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();try{c.setRequestMethod("POST");c.setConnectTimeout(15000);c.setReadTimeout(readTimeout);c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Accept","application/json");if(auth){c.setRequestProperty("X-Device-Id",id);c.setRequestProperty("X-Device-Secret",sec);}byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(bytes.length);try(OutputStream o=c.getOutputStream()){o.write(bytes);}int code=c.getResponseCode();String raw=read(code>=200&&code<300?c.getInputStream():c.getErrorStream());return new Raw(code,raw);}finally{c.disconnect();}}
+        HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();try{c.setRequestMethod("POST");c.setConnectTimeout(15000);c.setReadTimeout(readTimeout);c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Accept","application/json");if(auth){c.setRequestProperty("X-Device-Id",id);c.setRequestProperty("X-Device-Secret",sec);}if(url.startsWith(FRONTIER)){String k=prefs.getSecret(KEY_OPENAI);if(validKey(k))c.setRequestProperty("X-OpenAI-Key",k);}byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(bytes.length);try(OutputStream o=c.getOutputStream()){o.write(bytes);}int code=c.getResponseCode();String raw=read(code>=200&&code<300?c.getInputStream():c.getErrorStream());return new Raw(code,raw);}finally{c.disconnect();}}
 
+    private static boolean validKey(String k){return k!=null&&k.startsWith("sk-")&&k.length()>24;}
     private static boolean has(String s,String...xs){for(String x:xs)if(s.contains(x))return true;return false;}
     private static String displayName(String id){if("star-council".equals(id))return "Star Council";if("rival1".equals(id))return "Rival 1";if("rival2".equals(id))return "Rival 2";if("rival3".equals(id))return "Rival 3";if("leary".equals(id))return "Timothy Leary";if(id==null||id.isEmpty())return "Resident";return Character.toUpperCase(id.charAt(0))+id.substring(1);}
     private static String read(InputStream in)throws Exception{if(in==null)return "";StringBuilder b=new StringBuilder();try(BufferedReader r=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8))){String line;while((line=r.readLine())!=null){b.append(line);if(b.length()>4_000_000)break;}}return b.toString();}
