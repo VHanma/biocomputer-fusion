@@ -17,7 +17,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-/** Cloud-resident inbox for messages initiated by the minds themselves. */
+/** Cloud-resident inbox. Opening a message carries the exact initiating thought into its reply thread. */
 public class ResidentInboxActivity extends Activity {
     private static final int BG=0xFF05080F,PANEL=0xFF111827,TEXT=0xFFF6F8FF,MUTED=0xFF91A0B8,GOLD=0xFFF4D27A,TEAL=0xFF62E5CF,VIOLET=0xFFAA8CFF,DANGER=0xFFFF7A90;
     private LinearLayout body;
@@ -30,26 +30,26 @@ public class ResidentInboxActivity extends Activity {
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(BG);root.setPadding(dp(14),dp(12),dp(14),dp(12));
         LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);
         Button back=button("‹",0x22FFFFFF,TEXT);back.setOnClickListener(v->finish());head.addView(back,new LinearLayout.LayoutParams(dp(48),dp(46)));
-        LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.addView(text("RESIDENT INBOX",21,TEXT,true));titles.addView(text("messages they chose to initiate · cloud persistent",9,TEAL,false));head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);titles.addView(text("RESIDENT INBOX",21,TEXT,true));titles.addView(text("their initiated thoughts · replies stay in-thread",9,TEAL,false));head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
         Button refresh=button("↻",0x22FFFFFF,VIOLET);refresh.setOnClickListener(v->refresh());head.addView(refresh,new LinearLayout.LayoutParams(dp(48),dp(42)));root.addView(head);
         ScrollView sc=new ScrollView(this);body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(0,dp(8),0,dp(24));sc.addView(body);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));return root;
     }
 
     private void refresh(){
         body.removeAllViews();body.addView(text("Listening to the City…",12,MUTED,false));
-        new Thread(()->{try{JSONObject s=cloud.sync();JSONArray rows=s.optJSONArray("messages");runOnUiThread(()->render(rows));}catch(Throwable t){String msg="Cloud inbox is temporarily unreachable. Your residents' cloud messages remain stored and will reappear when the link returns.\n\n"+shortErr(t);runOnUiThread(()->{body.removeAllViews();body.addView(text(msg,12,DANGER,false));});}},"CloudInbox").start();
+        new Thread(()->{try{JSONObject s=cloud.sync();JSONArray rows=s.optJSONArray("messages");runOnUiThread(()->render(rows));}catch(Throwable t){String msg="Cloud inbox is temporarily unreachable. Your residents' messages remain stored and will reappear when the link returns.\n\n"+shortErr(t);runOnUiThread(()->{body.removeAllViews();body.addView(text(msg,12,DANGER,false));});}},"CloudInbox").start();
     }
 
     private void render(JSONArray rows){
         body.removeAllViews();
-        if(rows==null||rows.length()==0){body.addView(text("The City is quiet. When a resident decides something is worth bringing to you, it will appear here.",13,MUTED,false));return;}
+        if(rows==null||rows.length()==0){body.addView(text("The City is quiet. When a resident has something worth bringing to you, it will appear here.",13,MUTED,false));return;}
         for(int i=0;i<rows.length();i++){
             JSONObject m=rows.optJSONObject(i);if(m==null)continue;
-            long id=m.optLong("id",0);String resident=m.optString("resident_id","omega"),msg=m.optString("text",""),reason=m.optString("reason","thought");int priority=m.optInt("priority",5);
+            long messageId=m.optLong("id",0);String resident=m.optString("resident_id","omega"),msg=m.optString("text",""),reason=m.optString("reason","thought");int priority=m.optInt("priority",5);
             LinearLayout c=card();c.addView(text("● "+displayName(resident)+"  ·  "+reason,11,GOLD,true));c.addView(text(msg,14,TEXT,false),lp(-1,-2,0,6,0,5));c.addView(text("priority "+priority+"/10 · "+whenIso(m.optString("created_at","")),8,MUTED,false));
             LinearLayout row=new LinearLayout(this);
-            Button room=button("OPEN ROOM",0x22FFFFFF,TEAL);room.setOnClickListener(v->{markRead(id);Intent x=new Intent(this,ContinuumRoomActivity.class);x.putExtra("resident_id",resident);startActivity(x);});row.addView(room,new LinearLayout.LayoutParams(0,dp(42),1));
-            Button read=button("MARK READ",0x22FFFFFF,VIOLET);read.setOnClickListener(v->{markRead(id);refresh();});LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(0,dp(42),1);rp.setMargins(dp(6),0,0,0);row.addView(read,rp);c.addView(row,lp(-1,-2,0,8,0,0));
+            Button reply=button("REPLY",0x22FFFFFF,TEAL);reply.setOnClickListener(v->{markRead(messageId);Intent x=new Intent(this,ContinuumRoomActivity.class);x.putExtra("resident_id",resident);x.putExtra("inbox_message_id",messageId);x.putExtra("inbox_message_text",msg);x.putExtra("inbox_message_reason",reason);startActivity(x);});row.addView(reply,new LinearLayout.LayoutParams(0,dp(42),1));
+            Button read=button("MARK READ",0x22FFFFFF,VIOLET);read.setOnClickListener(v->{markRead(messageId);refresh();});LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(0,dp(42),1);rp.setMargins(dp(6),0,0,0);row.addView(read,rp);c.addView(row,lp(-1,-2,0,8,0,0));
             body.addView(c,lp(-1,-2,0,0,0,8));
         }
     }
